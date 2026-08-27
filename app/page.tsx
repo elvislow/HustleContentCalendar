@@ -333,7 +333,32 @@ export default function Home() {
 
   if (authStatus === 'loading') return <main className="auth-shell"><div className="auth-card"><span className="auth-spark">✦</span><h1>Content Flow</h1><p>Connecting your workspace…</p></div></main>;
 
-  if (authStatus === 'signed-out') return <main className="auth-shell"><div className="auth-card"><span className="auth-spark">✦</span><p className="eyebrow">HUSTLE × THE SECOND STUDIO</p><h1>Content Flow</h1><p>One shared calendar for ideas, production, publishing and performance.</p>{magicLinkSent ? <div className="magic-link-success"><strong>Check your inbox</strong><span>We sent a secure sign-in link to {authEmail.trim().toLowerCase()}.</span><button type="button" onClick={() => { setMagicLinkSent(false); setAuthError(''); }}>Use a different email</button></div> : <form className="email-login" onSubmit={(event) => void signInWithEmail(event)}><label htmlFor="login-email">Work email</label><input id="login-email" type="email" autoComplete="email" required placeholder="you@company.com" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} /><button className="email-login-button" type="submit" disabled={authBusy}>{authBusy ? 'Sending…' : 'Email me a sign-in link'}</button></form>}{authError && <small className="auth-error">{authError}</small>}<small>Only emails approved by your admin can access the calendar.</small></div></main>;
+  if (authStatus === 'signed-out') return <main className="auth-shell login-shell">
+    <section className="login-card">
+      <div className="login-brand-panel">
+        <div className="login-brand-lockup"><span>✦</span><strong>hustle.</strong><i>×</i><b>THE SECOND STUDIO</b></div>
+        <div className="login-message">
+          <p>CONTENT OPERATIONS, IN ONE PLACE</p>
+          <h1>Keep every idea <em>moving.</em></h1>
+          <span>Plan the story, move it through production, publish everywhere and learn what connects.</span>
+        </div>
+        <div className="login-preview" aria-hidden="true">
+          <div className="preview-top"><span>August content</span><b>Cloud synced</b></div>
+          <div className="preview-row"><i>12</i><div><strong>Founder story</strong><span>IG · TikTok</span></div><b>Ready</b></div>
+          <div className="preview-row"><i>18</i><div><strong>Studio walkthrough</strong><span>YouTube · Lemon8</span></div><b>Editing</b></div>
+        </div>
+        <div className="login-benefits"><span>● Two brands</span><span>● One team</span><span>● Live cloud sync</span></div>
+      </div>
+      <div className="login-form-panel">
+        <div className="login-form-heading"><span>SECURE WORKSPACE</span><h2>Welcome back.</h2><p>Enter your approved work email. We’ll send you a secure link—no password needed.</p></div>
+        {magicLinkSent
+          ? <div className="magic-link-success"><strong>Check your inbox</strong><span>We sent a secure sign-in link to {authEmail.trim().toLowerCase()}.</span><button type="button" onClick={() => { setMagicLinkSent(false); setAuthError(''); }}>Use a different email</button></div>
+          : <form className="email-login" onSubmit={(event) => void signInWithEmail(event)}><label htmlFor="login-email">Work email</label><input id="login-email" type="email" autoComplete="email" required placeholder="you@company.com" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} /><button className="email-login-button" type="submit" disabled={authBusy}>{authBusy ? 'Sending your link…' : 'Continue with email'}<span>→</span></button></form>}
+        {authError && <small className="auth-error">{authError}</small>}
+        <div className="login-access-note"><span>✓</span><p><strong>Admin-approved access</strong><small>Only invited team members can enter the calendar.</small></p></div>
+      </div>
+    </section>
+  </main>;
 
   if (authStatus === 'denied') return <main className="auth-shell"><div className="auth-card"><span className="auth-spark">!</span><p className="eyebrow">ACCESS NOT APPROVED</p><h1>Ask your admin</h1><p><strong>{authUser?.email}</strong> is not currently allowed to enter this workspace.</p>{authError && <small className="auth-error">{authError}</small>}<button className="secondary-button" onClick={() => void signOut()}>Use another email</button></div></main>;
 
