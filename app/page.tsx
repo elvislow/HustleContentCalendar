@@ -110,6 +110,9 @@ export default function Home() {
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [member, setMember] = useState<Member | null>(null);
   const [authError, setAuthError] = useState('');
+  const [authEmail, setAuthEmail] = useState('');
+  const [authBusy, setAuthBusy] = useState(false);
+  const [magicLinkSent, setMagicLinkSent] = useState(false);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [draft, setDraft] = useState<Entry>(emptyEntry);
   const [showForm, setShowForm] = useState(false);
@@ -144,7 +147,7 @@ export default function Home() {
       const { error: bootstrapError } = await supabase.rpc('bootstrap_member');
       if (bootstrapError) {
         if (!active) return;
-        setAuthError(bootstrapError.message.includes('invited') ? 'This Google email has not been added by an admin.' : bootstrapError.message);
+        setAuthError(bootstrapError.message.includes('invited') ? 'This email has not been added by an admin.' : bootstrapError.message);
         setAuthStatus('denied');
         return;
       }
@@ -258,6 +261,20 @@ export default function Home() {
     const { error } = await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } });
     if (error) setAuthError(error.message);
   }
+  async function signInWithEmail(event: FormEvent) {
+    event.preventDefault();
+    const email = authEmail.trim().toLowerCase();
+    if (!/^\S+@\S+\.\S+$/.test(email)) { setAuthError('Enter a valid email address.'); return; }
+    setAuthError('');
+    setAuthBusy(true);
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: window.location.origin, shouldCreateUser: true },
+    });
+    setAuthBusy(false);
+    if (error) { setAuthError(error.message); return; }
+    setMagicLinkSent(true);
+  }
   async function signOut() {
     await supabase.auth.signOut();
     setShowTeam(false);
@@ -280,7 +297,7 @@ export default function Home() {
     event.preventDefault();
     if (member?.role !== 'admin') return;
     const email = inviteEmail.trim().toLowerCase();
-    if (!/^\S+@\S+\.\S+$/.test(email)) { setTeamError('Enter a valid Google email.'); return; }
+    if (!/^\S+@\S+\.\S+$/.test(email)) { setTeamError('Enter a valid email address.'); return; }
     setTeamError('');
     const existing = members.find((item) => item.email === email);
     const result = existing
@@ -321,9 +338,9 @@ export default function Home() {
 
   if (authStatus === 'loading') return <main className="auth-shell"><div className="auth-card"><span className="auth-spark">✦</span><h1>Content Flow</h1><p>Connecting your workspace…</p></div></main>;
 
-  if (authStatus === 'signed-out') return <main className="auth-shell"><div className="auth-card"><span className="auth-spark">✦</span><p className="eyebrow">HUSTLE × THE SECOND STUDIO</p><h1>Content Flow</h1><p>One shared calendar for ideas, production, publishing and performance.</p><button className="google-button" onClick={() => void signInWithGoogle()}><span>G</span> Continue with Google</button>{authError && <small className="auth-error">{authError}</small>}<small>Access is limited to emails approved by your admin.</small></div></main>;
+  if (authStatus === 'signed-out') return <main className="auth-shell"><div className="auth-card"><span className="auth-spark">✦</span><p className="eyebrow">HUSTLE × THE SECOND STUDIO</p><h1>Content Flow</h1><p>One shared calendar for ideas, production, publishing and performance.</p>{magicLinkSent ? <div className="magic-link-success"><strong>Check your inbox</strong><span>We sent a secure sign-in link to {authEmail.trim().toLowerCase()}.</span><button type="button" onClick={() => { setMagicLinkSent(false); setAuthError(''); }}>Use a different email</button></div> : <form className="email-login" onSubmit={(event) => void signInWithEmail(event)}><label htmlFor="login-email">Work email</label><input id="login-email" type="email" autoComplete="email" required placeholder="you@company.com" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} /><button className="email-login-button" type="submit" disabled={authBusy}>{authBusy ? 'Sending…' : 'Email me a sign-in link'}</button></form>}<div className="auth-divider"><span>or</span></div><button className="google-button" type="button" onClick={() => void signInWithGoogle()}><span>G</span> Continue with Google <small>optional</small></button>{authError && <small className="auth-error">{authError}</small>}<small>Only emails approved by your admin can access the calendar.</small></div></main>;
 
-  if (authStatus === 'denied') return <main className="auth-shell"><div className="auth-card"><span className="auth-spark">!</span><p className="eyebrow">ACCESS NOT APPROVED</p><h1>Ask your admin</h1><p><strong>{authUser?.email}</strong> is not currently allowed to enter this workspace.</p>{authError && <small className="auth-error">{authError}</small>}<button className="secondary-button" onClick={() => void signOut()}>Use another Google account</button></div></main>;
+  if (authStatus === 'denied') return <main className="auth-shell"><div className="auth-card"><span className="auth-spark">!</span><p className="eyebrow">ACCESS NOT APPROVED</p><h1>Ask your admin</h1><p><strong>{authUser?.email}</strong> is not currently allowed to enter this workspace.</p>{authError && <small className="auth-error">{authError}</small>}<button className="secondary-button" onClick={() => void signOut()}>Use another email</button></div></main>;
 
   return <main className="app-shell" data-brand={brand}>
     <header className="topbar">
@@ -392,13 +409,13 @@ export default function Home() {
     </form></div>}
 
     {showTeam && member?.role === 'admin' && <div className="modal-backdrop" onMouseDown={() => setShowTeam(false)}><section className="team-panel" onMouseDown={(event) => event.stopPropagation()}>
-      <div className="editor-head"><div><p className="eyebrow">ADMIN SETTINGS</p><h2>Manage team access</h2><span className="team-subtitle">Only approved Google emails can enter Content Flow.</span></div><button type="button" className="close" onClick={() => setShowTeam(false)}>×</button></div>
-      <form className="invite-form" onSubmit={addTeamMember}><label className="field"><span>Google email</span><input type="email" required placeholder="name@company.com" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} /></label><label className="field"><span>Role</span><select value={inviteRole} onChange={(event) => setInviteRole(event.target.value as Role)}><option value="editor">Editor</option><option value="viewer">Viewer</option><option value="admin">Admin</option></select></label><button className="primary-button" type="submit">Add access</button></form>
+      <div className="editor-head"><div><p className="eyebrow">ADMIN SETTINGS</p><h2>Manage team access</h2><span className="team-subtitle">Only approved emails can enter Content Flow.</span></div><button type="button" className="close" onClick={() => setShowTeam(false)}>×</button></div>
+      <form className="invite-form" onSubmit={addTeamMember}><label className="field"><span>Email address</span><input type="email" required placeholder="name@company.com" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} /></label><label className="field"><span>Role</span><select value={inviteRole} onChange={(event) => setInviteRole(event.target.value as Role)}><option value="editor">Editor</option><option value="viewer">Viewer</option><option value="admin">Admin</option></select></label><button className="primary-button" type="submit">Add access</button></form>
       {teamError && <p className="team-error">{teamError}</p>}
       <div className="role-guide"><span><b>Admin</b> manages people and content</span><span><b>Editor</b> updates content</span><span><b>Viewer</b> reads only</span></div>
       <div className="team-list"><div className="team-list-head"><span>People with access</span><small>{members.filter((item) => item.status === 'active').length + invites.filter((invite) => invite.status === 'active' && !members.some((item) => item.email === invite.email)).length} active</small></div>
-        {members.map((item) => <article className={`team-row ${item.status}`} key={item.id}><div className="member-avatar">{item.email.slice(0, 1).toUpperCase()}</div><div className="member-info"><strong>{item.email}</strong><small>{item.id === authUser?.id ? 'You · Signed in' : item.status === 'active' ? 'Google account connected' : 'Access inactive'}</small></div><select aria-label={`Role for ${item.email}`} value={item.role} disabled={item.id === authUser?.id && item.email === initialAdminEmail} onChange={(event) => void updateTeamRole('member', item.id, event.target.value as Role)}><option value="admin">Admin</option><option value="editor">Editor</option><option value="viewer">Viewer</option></select><button className="remove-member" type="button" disabled={item.id === authUser?.id} onClick={() => void removeTeamAccess('member', item.id)}>{item.status === 'active' ? 'Deactivate' : 'Inactive'}</button></article>)}
-        {invites.filter((invite) => !members.some((item) => item.email === invite.email)).map((invite) => <article className="team-row pending" key={invite.email}><div className="member-avatar">{invite.email.slice(0, 1).toUpperCase()}</div><div className="member-info"><strong>{invite.email}</strong><small>Approved · Waiting for first Google login</small></div><select aria-label={`Role for ${invite.email}`} value={invite.role} onChange={(event) => void updateTeamRole('invite', invite.email, event.target.value as Role)}><option value="admin">Admin</option><option value="editor">Editor</option><option value="viewer">Viewer</option></select><button className="remove-member" type="button" onClick={() => void removeTeamAccess('invite', invite.email)}>Remove</button></article>)}
+        {members.map((item) => <article className={`team-row ${item.status}`} key={item.id}><div className="member-avatar">{item.email.slice(0, 1).toUpperCase()}</div><div className="member-info"><strong>{item.email}</strong><small>{item.id === authUser?.id ? 'You · Signed in' : item.status === 'active' ? 'Account connected' : 'Access inactive'}</small></div><select aria-label={`Role for ${item.email}`} value={item.role} disabled={item.id === authUser?.id && item.email === initialAdminEmail} onChange={(event) => void updateTeamRole('member', item.id, event.target.value as Role)}><option value="admin">Admin</option><option value="editor">Editor</option><option value="viewer">Viewer</option></select><button className="remove-member" type="button" disabled={item.id === authUser?.id} onClick={() => void removeTeamAccess('member', item.id)}>{item.status === 'active' ? 'Deactivate' : 'Inactive'}</button></article>)}
+        {invites.filter((invite) => !members.some((item) => item.email === invite.email)).map((invite) => <article className="team-row pending" key={invite.email}><div className="member-avatar">{invite.email.slice(0, 1).toUpperCase()}</div><div className="member-info"><strong>{invite.email}</strong><small>Approved · Waiting for first login</small></div><select aria-label={`Role for ${invite.email}`} value={invite.role} onChange={(event) => void updateTeamRole('invite', invite.email, event.target.value as Role)}><option value="admin">Admin</option><option value="editor">Editor</option><option value="viewer">Viewer</option></select><button className="remove-member" type="button" onClick={() => void removeTeamAccess('invite', invite.email)}>Remove</button></article>)}
       </div>
     </section></div>}
   </main>;
