@@ -1,9 +1,14 @@
 'use client';
 
 import { FormEvent, useEffect, useMemo, useState } from 'react';
+import type { User } from '@supabase/supabase-js';
+import { supabase } from '@/lib/supabase';
 
 type Platform = 'IG' | 'YouTube' | 'Lemon8' | 'TikTok';
 type Brand = 'hustle' | 'second-studio';
+type Role = 'admin' | 'editor' | 'viewer';
+type Member = { id: string; email: string; role: Role; status: 'active' | 'inactive'; created_at?: string };
+type Invite = { email: string; role: Role; status: 'active' | 'inactive'; created_at?: string };
 type Insight = { postUrl: string; views: number; likes: number; shares: number; saves: number };
 type Entry = {
   id: string; date: string; hour: string; minute: string; title: string;
@@ -13,6 +18,7 @@ type Entry = {
 type StatusKey = 'idea' | 'editing' | 'ready' | 'published';
 
 const platforms: Platform[] = ['IG', 'YouTube', 'Lemon8', 'TikTok'];
+const initialAdminEmail = 'elvis@hustle.com.sg';
 const hours = Array.from({ length: 24 }, (_, index) => String(index).padStart(2, '0'));
 const minutes = ['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'];
 const blankInsight = (): Insight => ({ postUrl: '', views: 0, likes: 0, shares: 0, saves: 0 });
@@ -65,7 +71,7 @@ const storageKey = (brand: Brand) => `content-calendar-entries-${brand}`;
 function normalizeEntry(raw: Record<string, unknown>): Entry {
   const selected = Array.isArray(raw.platforms) ? raw.platforms.filter((item): item is Platform => platforms.includes(item as Platform)) : [];
   const data = blankPlatformData();
-  const existing = raw.platformData as Partial<Record<Platform, Partial<Insight>>> | undefined;
+  const existing = (raw.platformData || raw.platform_data) as Partial<Record<Platform, Partial<Insight>>> | undefined;
   platforms.forEach((platform) => { if (existing?.[platform]) data[platform] = { ...data[platform], ...existing[platform] }; });
   if (!existing && selected[0]) {
     data[selected[0]] = {
@@ -74,14 +80,36 @@ function normalizeEntry(raw: Record<string, unknown>): Entry {
     };
   }
   return {
-    id: String(raw.id || crypto.randomUUID()), date: String(raw.date || today()), hour: String(raw.hour || '12'), minute: String(raw.minute || '00'),
-    title: String(raw.title || ''), platforms: selected, referenceUrl: String(raw.referenceUrl || ''),
+    id: String(raw.id || crypto.randomUUID()), date: String(raw.date || raw.publish_date || today()), hour: String(raw.hour || raw.publish_hour || '12'), minute: String(raw.minute || raw.publish_minute || '00'),
+    title: String(raw.title || ''), platforms: selected, referenceUrl: String(raw.referenceUrl || raw.reference_url || ''),
     filmed: Boolean(raw.filmed), edited: Boolean(raw.edited), platformData: data,
+  };
+}
+
+function cloudRow(entry: Entry, brand: Brand, userId: string) {
+  return {
+    id: entry.id,
+    brand,
+    publish_date: entry.date,
+    publish_hour: entry.hour,
+    publish_minute: entry.minute,
+    title: entry.title,
+    platforms: entry.platforms,
+    reference_url: entry.referenceUrl,
+    filmed: entry.filmed,
+    edited: entry.edited,
+    platform_data: entry.platformData,
+    updated_at: new Date().toISOString(),
+    updated_by: userId,
   };
 }
 
 export default function Home() {
   const [brand, setBrand] = useState<Brand>('hustle');
+  const [authStatus, setAuthStatus] = useState<'loading' | 'signed-out' | 'ready' | 'denied'>('loading');
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [member, setMember] = useState<Member | null>(null);
+  const [authError, setAuthError] = useState('');
   const [entries, setEntries] = useState<Entry[]>([]);
   const [draft, setDraft] = useState<Entry>(emptyEntry);
   const [showForm, setShowForm] = useState(false);
@@ -89,7 +117,14 @@ export default function Home() {
   const [activePlatform, setActivePlatform] = useState<Platform>('IG');
   const [platformFilter, setPlatformFilter] = useState<'all' | Platform>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | StatusKey>('all');
-  const [syncState, setSyncState] = useState<'loading' | 'saving' | 'saved'>('loading');
+  const [syncState, setSyncState] = useState<'loading' | 'saving' | 'synced' | 'error'>('loading');
+  const [localImportCount, setLocalImportCount] = useState(0);
+  const [showTeam, setShowTeam] = useState(false);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [invites, setInvites] = useState<Invite[]>([]);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState<Role>('editor');
+  const [teamError, setTeamError] = useState('');
   const [month, setMonth] = useState(() => { const now = new Date(); return new Date(now.getFullYear(), now.getMonth(), 1); });
 
   useEffect(() => {
@@ -98,20 +133,67 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    setSyncState('loading');
-    window.localStorage.setItem('content-calendar-brand', brand);
-    const saved = window.localStorage.getItem(storageKey(brand))
-      || (brand === 'hustle' ? window.localStorage.getItem('content-calendar-entries') : null);
-    let nextEntries: Entry[] = [];
-    if (saved) {
-      try { nextEntries = (JSON.parse(saved) as Record<string, unknown>[]).map(normalizeEntry); } catch { nextEntries = []; }
+    let active = true;
+    async function resolveUser(user: User | null) {
+      if (!active) return;
+      setAuthUser(user);
+      setMember(null);
+      setAuthError('');
+      if (!user) { setAuthStatus('signed-out'); return; }
+      setAuthStatus('loading');
+      const { error: bootstrapError } = await supabase.rpc('bootstrap_member');
+      if (bootstrapError) {
+        if (!active) return;
+        setAuthError(bootstrapError.message.includes('invited') ? 'This Google email has not been added by an admin.' : bootstrapError.message);
+        setAuthStatus('denied');
+        return;
+      }
+      const { data, error } = await supabase.from('members').select('id,email,role,status,created_at').eq('id', user.id).single();
+      if (!active) return;
+      if (error || !data || data.status !== 'active') {
+        setAuthError(error?.message || 'This account is inactive.');
+        setAuthStatus('denied');
+        return;
+      }
+      setMember(data as Member);
+      setAuthStatus('ready');
     }
-    setEntries(nextEntries);
+    void supabase.auth.getSession().then(({ data }) => resolveUser(data.session?.user || null));
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      window.setTimeout(() => void resolveUser(session?.user || null), 0);
+    });
+    return () => { active = false; listener.subscription.unsubscribe(); };
+  }, []);
+
+  useEffect(() => {
+    if (authStatus !== 'ready') return;
+    let active = true;
+    window.localStorage.setItem('content-calendar-brand', brand);
+    setSyncState('loading');
+    setEntries([]);
     setPlatformFilter('all');
     setStatusFilter('all');
     setShowForm(false);
-    setSyncState('saved');
-  }, [brand]);
+
+    async function loadCloudEntries() {
+      const { data, error } = await supabase.from('content_entries').select('*').eq('brand', brand).order('publish_date');
+      if (!active) return;
+      if (error) { setSyncState('error'); return; }
+      setEntries((data || []).map((row) => normalizeEntry(row as Record<string, unknown>)));
+      setSyncState('synced');
+      const localText = window.localStorage.getItem(storageKey(brand))
+        || (brand === 'hustle' ? window.localStorage.getItem('content-calendar-entries') : null);
+      if (!window.localStorage.getItem(`content-calendar-imported-${brand}`) && localText) {
+        try { setLocalImportCount((JSON.parse(localText) as unknown[]).length); } catch { setLocalImportCount(0); }
+      } else setLocalImportCount(0);
+    }
+
+    void loadCloudEntries();
+    const channel = supabase.channel(`content-entries-${brand}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'content_entries', filter: `brand=eq.${brand}` }, () => void loadCloudEntries())
+      .subscribe();
+    return () => { active = false; void supabase.removeChannel(channel); };
+  }, [authStatus, brand]);
 
   const filteredEntries = useMemo(() => entries.filter((entry) =>
     (platformFilter === 'all' || entry.platforms.includes(platformFilter)) &&
@@ -130,13 +212,14 @@ export default function Home() {
   const ready = entries.filter((entry) => statusOf(entry).key === 'ready').length;
   const bestScore = entries.reduce((top, entry) => Math.max(top, overallViralScore(entry, entries)), 0);
 
-  function persistEntries(nextEntries: Entry[]) {
+  async function persistEntry(entry: Entry) {
+    if (!authUser) return;
     setSyncState('saving');
-    window.localStorage.setItem(storageKey(brand), JSON.stringify(nextEntries));
-    window.setTimeout(() => setSyncState('saved'), 180);
+    const { error } = await supabase.from('content_entries').upsert(cloudRow(entry, brand, authUser.id));
+    setSyncState(error ? 'error' : 'synced');
   }
-  function openNew(date?: string) { const next = emptyEntry(); if (date) next.date = date; setDraft(next); setActivePlatform('IG'); setShowForm(true); }
-  function openEdit(entry: Entry) { setDraft({ ...entry, platformData: structuredClone(entry.platformData) }); setActivePlatform(entry.platforms[0] || 'IG'); setShowForm(true); }
+  function openNew(date?: string) { if (member?.role === 'viewer') return; const next = emptyEntry(); if (date) next.date = date; setDraft(next); setActivePlatform('IG'); setShowForm(true); }
+  function openEdit(entry: Entry) { if (member?.role === 'viewer') return; setDraft({ ...entry, platformData: structuredClone(entry.platformData) }); setActivePlatform(entry.platforms[0] || 'IG'); setShowForm(true); }
   function submit(event: FormEvent) {
     event.preventDefault();
     if (!draft.date || !draft.title.trim()) return;
@@ -144,14 +227,83 @@ export default function Home() {
     const nextEntries = draft.id ? entries.map((entry) => entry.id === draft.id ? saved : entry) : [...entries, saved];
     setEntries(nextEntries);
     setShowForm(false);
-    persistEntries(nextEntries);
+    void persistEntry(saved);
   }
-  function removeEntry() {
+  async function removeEntry() {
     const id = draft.id;
     const remaining = entries.filter((entry) => entry.id !== id);
     setEntries(remaining);
     setShowForm(false);
-    persistEntries(remaining);
+    setSyncState('saving');
+    const { error } = await supabase.from('content_entries').delete().eq('id', id);
+    setSyncState(error ? 'error' : 'synced');
+  }
+  async function importLocalEntries() {
+    if (!authUser) return;
+    const localText = window.localStorage.getItem(storageKey(brand))
+      || (brand === 'hustle' ? window.localStorage.getItem('content-calendar-entries') : null);
+    if (!localText) { setLocalImportCount(0); return; }
+    try {
+      const localEntries = (JSON.parse(localText) as Record<string, unknown>[]).map(normalizeEntry);
+      setSyncState('saving');
+      const { error } = await supabase.from('content_entries').upsert(localEntries.map((entry) => cloudRow(entry, brand, authUser.id)));
+      if (error) { setSyncState('error'); return; }
+      window.localStorage.setItem(`content-calendar-imported-${brand}`, 'true');
+      setLocalImportCount(0);
+      setSyncState('synced');
+    } catch { setSyncState('error'); }
+  }
+  async function signInWithGoogle() {
+    setAuthError('');
+    const { error } = await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } });
+    if (error) setAuthError(error.message);
+  }
+  async function signOut() {
+    await supabase.auth.signOut();
+    setShowTeam(false);
+    setEntries([]);
+  }
+  async function refreshTeam() {
+    if (member?.role !== 'admin') return;
+    const [memberResult, inviteResult] = await Promise.all([
+      supabase.from('members').select('id,email,role,status,created_at').order('created_at'),
+      supabase.from('invites').select('email,role,status,created_at').order('created_at'),
+    ]);
+    if (memberResult.error || inviteResult.error) {
+      setTeamError(memberResult.error?.message || inviteResult.error?.message || 'Unable to load team.');
+      return;
+    }
+    setMembers((memberResult.data || []) as Member[]);
+    setInvites((inviteResult.data || []) as Invite[]);
+  }
+  async function addTeamMember(event: FormEvent) {
+    event.preventDefault();
+    if (member?.role !== 'admin') return;
+    const email = inviteEmail.trim().toLowerCase();
+    if (!/^\S+@\S+\.\S+$/.test(email)) { setTeamError('Enter a valid Google email.'); return; }
+    setTeamError('');
+    const existing = members.find((item) => item.email === email);
+    const result = existing
+      ? await supabase.from('members').update({ role: inviteRole, status: 'active' }).eq('id', existing.id)
+      : await supabase.from('invites').upsert({ email, role: inviteRole, status: 'active', created_by: authUser?.id });
+    if (result.error) { setTeamError(result.error.message); return; }
+    setInviteEmail('');
+    await refreshTeam();
+  }
+  async function updateTeamRole(kind: 'member' | 'invite', id: string, role: Role) {
+    const result = kind === 'member'
+      ? await supabase.from('members').update({ role }).eq('id', id)
+      : await supabase.from('invites').update({ role }).eq('email', id);
+    if (result.error) setTeamError(result.error.message);
+    else await refreshTeam();
+  }
+  async function removeTeamAccess(kind: 'member' | 'invite', id: string) {
+    if (kind === 'member' && id === authUser?.id) { setTeamError('You cannot deactivate your own admin account.'); return; }
+    const result = kind === 'member'
+      ? await supabase.from('members').update({ status: 'inactive' }).eq('id', id)
+      : await supabase.from('invites').delete().eq('email', id);
+    if (result.error) setTeamError(result.error.message);
+    else await refreshTeam();
   }
   function togglePlatform(platform: Platform) {
     const included = draft.platforms.includes(platform);
@@ -164,8 +316,14 @@ export default function Home() {
     setDraft({ ...draft, platformData: { ...draft.platformData, [platform]: { ...draft.platformData[platform], ...patch } } });
   }
   const monthKey = (day: number) => `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-  const syncLabel = syncState === 'loading' ? 'Loading…' : syncState === 'saving' ? 'Saving…' : 'Saved on this device';
+  const syncLabel = syncState === 'loading' ? 'Connecting…' : syncState === 'saving' ? 'Saving…' : syncState === 'error' ? 'Sync failed' : 'Cloud synced';
   const activeViralScore = platformViralScore(draft.platformData[activePlatform], activePlatform, entries, draft.id);
+
+  if (authStatus === 'loading') return <main className="auth-shell"><div className="auth-card"><span className="auth-spark">✦</span><h1>Content Flow</h1><p>Connecting your workspace…</p></div></main>;
+
+  if (authStatus === 'signed-out') return <main className="auth-shell"><div className="auth-card"><span className="auth-spark">✦</span><p className="eyebrow">HUSTLE × THE SECOND STUDIO</p><h1>Content Flow</h1><p>One shared calendar for ideas, production, publishing and performance.</p><button className="google-button" onClick={() => void signInWithGoogle()}><span>G</span> Continue with Google</button>{authError && <small className="auth-error">{authError}</small>}<small>Access is limited to emails approved by your admin.</small></div></main>;
+
+  if (authStatus === 'denied') return <main className="auth-shell"><div className="auth-card"><span className="auth-spark">!</span><p className="eyebrow">ACCESS NOT APPROVED</p><h1>Ask your admin</h1><p><strong>{authUser?.email}</strong> is not currently allowed to enter this workspace.</p>{authError && <small className="auth-error">{authError}</small>}<button className="secondary-button" onClick={() => void signOut()}>Use another Google account</button></div></main>;
 
   return <main className="app-shell" data-brand={brand}>
     <header className="topbar">
@@ -178,8 +336,10 @@ export default function Home() {
         <button type="button" role="tab" aria-selected={brand === 'hustle'} className={brand === 'hustle' ? 'active' : ''} onClick={() => setBrand('hustle')}>hustle.</button>
         <button type="button" role="tab" aria-selected={brand === 'second-studio'} className={brand === 'second-studio' ? 'active' : ''} onClick={() => setBrand('second-studio')}>The Second Studio</button>
       </div>
-      <div className="top-actions"><span className={`sync-pill ${syncState}`}>● {syncLabel}</span><button className="primary-button" onClick={() => openNew()}><span>＋</span> Add content</button></div>
+      <div className="top-actions"><span className={`sync-pill ${syncState}`}>● {syncLabel}</span>{member?.role === 'admin' && <button className="account-button admin-settings-button" onClick={() => { setShowTeam(true); void refreshTeam(); }}>Admin settings</button>}<button className="account-button user-account" title={`${member?.email} · click to sign out`} onClick={() => void signOut()}>{member?.email.split('@')[0]} · {member?.role}</button>{member?.role !== 'viewer' && <button className="primary-button" onClick={() => openNew()}><span>＋</span> Add content</button>}</div>
     </header>
+
+    {localImportCount > 0 && member?.role !== 'viewer' && <aside className="import-banner"><div><strong>Bring your existing content to the cloud</strong><span>{localImportCount} item{localImportCount === 1 ? '' : 's'} found on this device for {brand === 'hustle' ? 'hustle.' : 'The Second Studio'}.</span></div><button onClick={() => void importLocalEntries()}>Import to cloud</button></aside>}
 
     <section className="hero">
       <div><p className="eyebrow">{brand === 'hustle' ? 'HUSTLE CONTENT CALENDAR' : 'THE SECOND STUDIO CONTENT CALENDAR'}</p><h1>Keep every idea moving.</h1><p className="hero-copy">Plan once, publish everywhere, and compare what connects on every platform.</p></div>
@@ -204,7 +364,7 @@ export default function Home() {
           <span className="day-number">{day}</span><div className="day-posts">{monthEntries.filter((entry) => entry.date === monthKey(day)).slice(0, 3).map((entry) => { const status = statusOf(entry); return <span className={`calendar-post status-${status.key}`} key={entry.id} onClick={(event) => { event.stopPropagation(); openEdit(entry); }}><b>{entry.hour}:{entry.minute}</b> {entry.title}</span>; })}</div>
         </button>)}</div>
       </div> : <div className="content-list">
-        {filteredEntries.length === 0 ? <div className="empty-state"><span>✦</span><h2>{entries.length ? 'Nothing matches yet' : 'Your content starts here'}</h2><p>{entries.length ? 'Try another platform or status filter.' : 'Add your first idea and give it a date.'}</p>{!entries.length && <button className="primary-button" onClick={() => openNew()}>Add content</button>}</div> : filteredEntries.slice().sort((a,b) => a.date.localeCompare(b.date)).map((entry) => {
+        {filteredEntries.length === 0 ? <div className="empty-state"><span>✦</span><h2>{entries.length ? 'Nothing matches yet' : 'Your content starts here'}</h2><p>{entries.length ? 'Try another platform or status filter.' : 'Add your first idea and give it a date.'}</p>{!entries.length && member?.role !== 'viewer' && <button className="primary-button" onClick={() => openNew()}>Add content</button>}</div> : filteredEntries.slice().sort((a,b) => a.date.localeCompare(b.date)).map((entry) => {
           const rate = overallRate(entry); const score = overallViralScore(entry, entries); const status = statusOf(entry);
           const views = totalViews(entry);
           const interactions = entry.platforms.reduce((sum, platform) => { const item = entry.platformData[platform]; return sum + item.likes + item.shares + item.saves; }, 0);
@@ -228,7 +388,18 @@ export default function Home() {
         {draft.platforms.includes(activePlatform) && <div className="platform-insights"><label className="field"><span>{activePlatform} post URL</span><input type="url" placeholder="Attach after publishing" value={draft.platformData[activePlatform].postUrl} onChange={(event) => updateInsight(activePlatform, { postUrl: event.target.value })} />{draft.platformData[activePlatform].postUrl && <a href={safeLink(draft.platformData[activePlatform].postUrl)} target="_blank" rel="noreferrer">View post ↗</a>}</label><div className="insights"><div className="insights-head"><div><span>{activePlatform} insights</span><small>Compared with your {activePlatform} content median</small></div><strong>{Math.round(activeViralScore)}/100</strong></div><div className="metrics">{(['views','likes','shares','saves'] as const).map((metric) => <label key={metric}><span>{metric}</span><input min="0" type="number" value={draft.platformData[activePlatform][metric] || ''} placeholder="0" onChange={(event) => updateInsight(activePlatform, { [metric]: Math.max(0, Number(event.target.value)) })} /></label>)}</div><div className="formula"><span style={{ width: `${activeViralScore}%` }} /><small>Viral Score · 50% Reach + 50% ER</small></div><p className="er-formula">{insightRate(draft.platformData[activePlatform]).toFixed(1)}% ER = (Likes + Shares + Saves) ÷ Views × 100%</p></div></div>}
       </section>}
       {!draft.id && <div className="progressive-note"><span>✦</span><p><strong>Keep planning simple.</strong> Post URLs and insights appear after you add this idea to the calendar.</p></div>}
-      <div className="editor-actions">{draft.id && <button type="button" className="delete" onClick={removeEntry}>Delete</button>}<button type="button" className="secondary-button" onClick={() => setShowForm(false)}>Cancel</button><button type="submit" className="primary-button">{draft.id ? 'Save changes' : 'Add to calendar'}</button></div>
+      <div className="editor-actions">{draft.id && <button type="button" className="delete" onClick={() => void removeEntry()}>Delete</button>}<button type="button" className="secondary-button" onClick={() => setShowForm(false)}>Cancel</button><button type="submit" className="primary-button">{draft.id ? 'Save changes' : 'Add to calendar'}</button></div>
     </form></div>}
+
+    {showTeam && member?.role === 'admin' && <div className="modal-backdrop" onMouseDown={() => setShowTeam(false)}><section className="team-panel" onMouseDown={(event) => event.stopPropagation()}>
+      <div className="editor-head"><div><p className="eyebrow">ADMIN SETTINGS</p><h2>Manage team access</h2><span className="team-subtitle">Only approved Google emails can enter Content Flow.</span></div><button type="button" className="close" onClick={() => setShowTeam(false)}>×</button></div>
+      <form className="invite-form" onSubmit={addTeamMember}><label className="field"><span>Google email</span><input type="email" required placeholder="name@company.com" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} /></label><label className="field"><span>Role</span><select value={inviteRole} onChange={(event) => setInviteRole(event.target.value as Role)}><option value="editor">Editor</option><option value="viewer">Viewer</option><option value="admin">Admin</option></select></label><button className="primary-button" type="submit">Add access</button></form>
+      {teamError && <p className="team-error">{teamError}</p>}
+      <div className="role-guide"><span><b>Admin</b> manages people and content</span><span><b>Editor</b> updates content</span><span><b>Viewer</b> reads only</span></div>
+      <div className="team-list"><div className="team-list-head"><span>People with access</span><small>{members.filter((item) => item.status === 'active').length + invites.filter((invite) => invite.status === 'active' && !members.some((item) => item.email === invite.email)).length} active</small></div>
+        {members.map((item) => <article className={`team-row ${item.status}`} key={item.id}><div className="member-avatar">{item.email.slice(0, 1).toUpperCase()}</div><div className="member-info"><strong>{item.email}</strong><small>{item.id === authUser?.id ? 'You · Signed in' : item.status === 'active' ? 'Google account connected' : 'Access inactive'}</small></div><select aria-label={`Role for ${item.email}`} value={item.role} disabled={item.id === authUser?.id && item.email === initialAdminEmail} onChange={(event) => void updateTeamRole('member', item.id, event.target.value as Role)}><option value="admin">Admin</option><option value="editor">Editor</option><option value="viewer">Viewer</option></select><button className="remove-member" type="button" disabled={item.id === authUser?.id} onClick={() => void removeTeamAccess('member', item.id)}>{item.status === 'active' ? 'Deactivate' : 'Inactive'}</button></article>)}
+        {invites.filter((invite) => !members.some((item) => item.email === invite.email)).map((invite) => <article className="team-row pending" key={invite.email}><div className="member-avatar">{invite.email.slice(0, 1).toUpperCase()}</div><div className="member-info"><strong>{invite.email}</strong><small>Approved · Waiting for first Google login</small></div><select aria-label={`Role for ${invite.email}`} value={invite.role} onChange={(event) => void updateTeamRole('invite', invite.email, event.target.value as Role)}><option value="admin">Admin</option><option value="editor">Editor</option><option value="viewer">Viewer</option></select><button className="remove-member" type="button" onClick={() => void removeTeamAccess('invite', invite.email)}>Remove</button></article>)}
+      </div>
+    </section></div>}
   </main>;
 }
