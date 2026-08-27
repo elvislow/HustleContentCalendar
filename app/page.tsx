@@ -256,11 +256,6 @@ export default function Home() {
       setSyncState('synced');
     } catch { setSyncState('error'); }
   }
-  async function signInWithGoogle() {
-    setAuthError('');
-    const { error } = await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } });
-    if (error) setAuthError(error.message);
-  }
   async function signInWithEmail(event: FormEvent) {
     event.preventDefault();
     const email = authEmail.trim().toLowerCase();
@@ -338,7 +333,7 @@ export default function Home() {
 
   if (authStatus === 'loading') return <main className="auth-shell"><div className="auth-card"><span className="auth-spark">✦</span><h1>Content Flow</h1><p>Connecting your workspace…</p></div></main>;
 
-  if (authStatus === 'signed-out') return <main className="auth-shell"><div className="auth-card"><span className="auth-spark">✦</span><p className="eyebrow">HUSTLE × THE SECOND STUDIO</p><h1>Content Flow</h1><p>One shared calendar for ideas, production, publishing and performance.</p>{magicLinkSent ? <div className="magic-link-success"><strong>Check your inbox</strong><span>We sent a secure sign-in link to {authEmail.trim().toLowerCase()}.</span><button type="button" onClick={() => { setMagicLinkSent(false); setAuthError(''); }}>Use a different email</button></div> : <form className="email-login" onSubmit={(event) => void signInWithEmail(event)}><label htmlFor="login-email">Work email</label><input id="login-email" type="email" autoComplete="email" required placeholder="you@company.com" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} /><button className="email-login-button" type="submit" disabled={authBusy}>{authBusy ? 'Sending…' : 'Email me a sign-in link'}</button></form>}<div className="auth-divider"><span>or</span></div><button className="google-button" type="button" onClick={() => void signInWithGoogle()}><span>G</span> Continue with Google <small>optional</small></button>{authError && <small className="auth-error">{authError}</small>}<small>Only emails approved by your admin can access the calendar.</small></div></main>;
+  if (authStatus === 'signed-out') return <main className="auth-shell"><div className="auth-card"><span className="auth-spark">✦</span><p className="eyebrow">HUSTLE × THE SECOND STUDIO</p><h1>Content Flow</h1><p>One shared calendar for ideas, production, publishing and performance.</p>{magicLinkSent ? <div className="magic-link-success"><strong>Check your inbox</strong><span>We sent a secure sign-in link to {authEmail.trim().toLowerCase()}.</span><button type="button" onClick={() => { setMagicLinkSent(false); setAuthError(''); }}>Use a different email</button></div> : <form className="email-login" onSubmit={(event) => void signInWithEmail(event)}><label htmlFor="login-email">Work email</label><input id="login-email" type="email" autoComplete="email" required placeholder="you@company.com" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} /><button className="email-login-button" type="submit" disabled={authBusy}>{authBusy ? 'Sending…' : 'Email me a sign-in link'}</button></form>}{authError && <small className="auth-error">{authError}</small>}<small>Only emails approved by your admin can access the calendar.</small></div></main>;
 
   if (authStatus === 'denied') return <main className="auth-shell"><div className="auth-card"><span className="auth-spark">!</span><p className="eyebrow">ACCESS NOT APPROVED</p><h1>Ask your admin</h1><p><strong>{authUser?.email}</strong> is not currently allowed to enter this workspace.</p>{authError && <small className="auth-error">{authError}</small>}<button className="secondary-button" onClick={() => void signOut()}>Use another email</button></div></main>;
 

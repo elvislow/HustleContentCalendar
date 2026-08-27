@@ -69,12 +69,6 @@ button { color: inherit; }
 .magic-link-success strong { font-size: 15px; }
 .magic-link-success span { color: var(--muted); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
 .magic-link-success button { align-self: flex-start; border: 0; background: none; color: var(--pink); padding: 3px 0 0; cursor: pointer; font-size: 10px; font-weight: 900; }
-.auth-divider { width: 100%; display: flex; align-items: center; gap: 10px; margin: 15px 0; color: #ac9db4; font-size: 9px; }
-.auth-divider::before, .auth-divider::after { content: ''; height: 1px; flex: 1; background: #e8deec; }
-.google-button { width: 100%; display: flex; justify-content: center; align-items: center; gap: 11px; border: 1px solid #ddd5e2; background: #fff; border-radius: 14px; padding: 13px 18px; cursor: pointer; font-weight: 900; box-shadow: 0 10px 24px #5a2d6612; }
-.google-button:hover { transform: translateY(-2px); box-shadow: 0 14px 30px #5a2d6620; }
-.google-button span { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; color: #fff; background: linear-gradient(135deg, #4285f4 0 25%, #34a853 25% 50%, #fbbc05 50% 75%, #ea4335 75%); font-size: 11px; }
-.google-button small { color: #9c8da5; font-size: 8px; font-weight: 700; }
 .auth-error { display: block; color: #b84053 !important; background: #fff0f2; border: 1px solid #f1c4ca; border-radius: 10px; padding: 9px 11px; }
 .import-banner { max-width: calc(1500px - clamp(40px, 10vw, 144px)); margin: 18px auto 0; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; gap: 18px; background: linear-gradient(110deg, #fff0d8, #ffe8f4, #f0e5ff); border: 1px solid #e7cde7; border-radius: 16px; box-shadow: 0 12px 30px #6e37640f; }
 .import-banner div { display: flex; flex-direction: column; gap: 3px; }

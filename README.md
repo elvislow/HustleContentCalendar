@@ -1,6 +1,6 @@
 # Content Flow
 
-A Vercel-ready, multi-brand content calendar for **hustle.** and **The Second Studio**, with Supabase cloud sync, passwordless email login, optional Google login, team roles and realtime updates.
+A Vercel-ready, multi-brand content calendar for **hustle.** and **The Second Studio**, with Supabase cloud sync, passwordless email login, team roles and realtime updates.
 
 ## One-time Supabase setup
 
@@ -12,10 +12,6 @@ A Vercel-ready, multi-brand content calendar for **hustle.** and **The Second St
    - Add your Vercel production URL and `http://localhost:3000` to Redirect URLs.
 
 The first approved admin is `elvis@hustle.com.sg`. Enter that address on the login page, then open the secure link sent by Supabase. After signing in, the account can open **Admin settings** and approve more emails as Admin, Editor or Viewer.
-
-## Optional Google login
-
-The Google button can remain as an optional second login method. It only works after Google is enabled in **Authentication → Sign In / Providers → Google** and its OAuth Client ID and Client Secret are saved. Email magic links work without this setup.
 
 ## Deploy
 
