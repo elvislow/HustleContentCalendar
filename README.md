@@ -4,7 +4,7 @@ A Vercel-ready, multi-brand content calendar for **hustle.** and **The Second St
 
 The Insights view aggregates Views, Likes, Shares, Saves and Follows by content publish date. It supports Last week, Last month, custom ranges, automatic previous-period comparison, percentage change and visual trend charts. Follows are stored inside the existing `platform_data` JSON, so no database migration is required.
 
-The Audience view stores one monthly snapshot for each brand and platform. Weekly rows accept Total Follows and Unfollows; Content-attributed Follows are calculated from posts dated inside the same weekly period, and Other Follows are calculated as Total minus Content. The view also calculates net growth, content contribution, follower growth, profile and link conversion, highlights attribution mismatches, compares the previous month and produces automatic monthly observations.
+The Audience view stores monthly data for each brand and platform and saves changes automatically. Weekly rows accept Total Follows and Unfollows; Content-attributed Follows are calculated from posts dated inside the same weekly period, and Other Follows are calculated as Total minus Content. The view also calculates net growth, content contribution, follower growth, profile and link conversion, highlights attribution mismatches, compares the previous month and produces automatic monthly observations.
 
 ## One-time Supabase setup
 

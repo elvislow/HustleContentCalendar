@@ -285,6 +285,7 @@ button { color: inherit; }
 .weekly-legend .unfollow::before { background: #e5d7eb; }
 .audience-fields { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; }
 .audience-fields.five { grid-template-columns: repeat(5, 1fr); }
+.audience-fields.demographics { grid-template-columns: repeat(3, 1fr); }
 .audience-fields.three { grid-template-columns: 1.5fr 1fr 1fr; margin-top: 9px; }
 .audience-fields label, .audience-notes { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
 .audience-fields label > span, .audience-notes > span { color: var(--muted); font-size: 7px; font-weight: 850; }

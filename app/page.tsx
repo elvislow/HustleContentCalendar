@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 
@@ -217,6 +217,8 @@ export default function Home() {
   const [audienceBusy, setAudienceBusy] = useState(false);
   const [audienceError, setAudienceError] = useState('');
   const [audienceMessage, setAudienceMessage] = useState('');
+  const audienceDirty = useRef(false);
+  const audienceSaveTimer = useRef<number | null>(null);
   const [month, setMonth] = useState(() => { const now = new Date(); return new Date(now.getFullYear(), now.getMonth(), 1); });
 
   useEffect(() => {
@@ -314,8 +316,15 @@ export default function Home() {
     const existing = audienceSnapshots.find((item) => item.month === audienceMonth && item.platform === audiencePlatform);
     setAudienceDraft(existing ? { ...existing } : blankAudience(audienceMonth, audiencePlatform));
     setAudienceWeekDrafts(monthWeekPeriods(audienceMonth).map((period) => audienceWeeks.find((item) => item.month === audienceMonth && item.platform === audiencePlatform && item.weekIndex === period.weekIndex) || { month: audienceMonth, platform: audiencePlatform, weekIndex: period.weekIndex, totalFollows: 0, unfollows: 0 }));
-    setAudienceMessage('');
+    audienceDirty.current = false;
   }, [audienceMonth, audiencePlatform, audienceSnapshots, audienceWeeks]);
+
+  useEffect(() => {
+    if (authStatus !== 'ready' || member?.role === 'viewer' || !audienceDirty.current) return;
+    if (audienceSaveTimer.current) window.clearTimeout(audienceSaveTimer.current);
+    audienceSaveTimer.current = window.setTimeout(() => void persistAudience(true), 900);
+    return () => { if (audienceSaveTimer.current) window.clearTimeout(audienceSaveTimer.current); };
+  }, [audienceDraft, audienceWeekDrafts, authStatus, member?.role]);
 
   const filteredEntries = useMemo(() => entries.filter((entry) =>
     (platformFilter === 'all' || entry.platforms.includes(platformFilter)) &&
@@ -407,7 +416,7 @@ export default function Home() {
     `Add ${audiencePlatform} totals for ${audienceMonth} to generate your monthly analysis.`,
   ] : [
     `${audiencePlatform} recorded ${monthlyTotalFollows.toLocaleString()} follows and ${monthlyUnfollows.toLocaleString()} unfollows, producing ${audienceNew >= 0 ? '+' : ''}${audienceNew.toLocaleString()} net growth (${audienceGrowthRate >= 0 ? '+' : ''}${audienceGrowthRate.toFixed(1)}%).`,
-    previousAudience ? `Follower growth ${audienceGrowthRate >= previousGrowthRate ? 'improved' : 'slowed'} by ${Math.abs(audienceGrowthRate - previousGrowthRate).toFixed(1)} percentage points versus last month.` : 'Add last month’s snapshot to unlock month-on-month growth comparison.',
+    previousAudience ? `Follower growth ${audienceGrowthRate >= previousGrowthRate ? 'improved' : 'slowed'} by ${Math.abs(audienceGrowthRate - previousGrowthRate).toFixed(1)} percentage points versus last month.` : 'Add last month’s data to unlock month-on-month growth comparison.',
     `${monthlyContentFollows.toLocaleString()} follows were attributed to content and ${monthlyOtherFollows.toLocaleString()} were Other Follows. Content contribution is ${contentContribution.toFixed(1)}%.`,
     `Follow conversion is ${followConversion.toFixed(2)}%, while ${profileVisitRate.toFixed(2)}% of reached users visited the profile and ${linkConversion.toFixed(2)}% of profile visitors clicked through.`,
     audienceDraft.primaryAge || audienceDraft.topLocations ? `Core audience: ${audienceDraft.primaryAge || 'age not added'}${audienceDraft.topLocations ? ` · strongest locations: ${audienceDraft.topLocations}` : ''}.` : 'Add age and location data to track who your content is attracting.',
@@ -420,20 +429,22 @@ export default function Home() {
     : `Prioritise content around ${audienceDraft.primaryAge || 'your strongest audience'}${audienceDraft.activeDay ? ` on ${audienceDraft.activeDay}${audienceDraft.activeTime ? ` around ${audienceDraft.activeTime}` : ''}` : ''}.`;
 
   function updateAudience(patch: Partial<AudienceSnapshot>) {
+    audienceDirty.current = true;
     setAudienceDraft((current) => ({ ...current, ...patch }));
-    setAudienceMessage('');
+    setAudienceMessage('Saving changes…');
   }
   function updateAudienceWeek(weekIndex: number, patch: Partial<AudienceWeek>) {
+    audienceDirty.current = true;
     setAudienceWeekDrafts((current) => current.map((item) => item.weekIndex === weekIndex ? { ...item, ...patch } : item));
-    setAudienceMessage('');
+    setAudienceMessage('Saving changes…');
   }
-  async function saveAudience(event: FormEvent) {
-    event.preventDefault();
-    if (!authUser || member?.role === 'viewer') return;
-    if (audienceDraft.endingFollowers < 0 || audienceDraft.startingFollowers < 0) { setAudienceError('Follower totals cannot be negative.'); return; }
+  async function persistAudience(silent = false): Promise<boolean> {
+    if (!authUser || member?.role === 'viewer') return false;
+    if (audienceDraft.endingFollowers < 0 || audienceDraft.startingFollowers < 0) { setAudienceError('Follower totals cannot be negative.'); return false; }
     setAudienceBusy(true);
     setAudienceError('');
-    setAudienceMessage('');
+    if (!silent) setAudienceMessage('Saving changes…');
+    audienceDirty.current = false;
     const row = {
       id: audienceDraft.id || crypto.randomUUID(), brand, platform: audiencePlatform, month_key: `${audienceMonth}-01`,
       starting_followers: audienceDraft.startingFollowers, ending_followers: audienceDraft.endingFollowers, reach: audienceDraft.reach,
@@ -448,12 +459,27 @@ export default function Home() {
     ]);
     setAudienceBusy(false);
     const error = monthlyResult.error || weeklyResult.error;
-    if (error) { setAudienceError(error.message.includes('audience_') ? 'Run the updated setup.sql once in Supabase, then try again.' : error.message); return; }
+    if (error) { audienceDirty.current = true; setAudienceError(error.message.includes('audience_') ? 'Run the updated setup.sql once in Supabase, then try again.' : error.message); setAudienceMessage(''); return false; }
     const saved = normalizeAudience(monthlyResult.data as Record<string, unknown>);
     const savedWeeks = (weeklyResult.data || []).map((item) => normalizeAudienceWeek(item as Record<string, unknown>));
     setAudienceSnapshots((current) => [...current.filter((item) => !(item.month === saved.month && item.platform === saved.platform)), saved]);
     setAudienceWeeks((current) => [...current.filter((item) => !(item.month === audienceMonth && item.platform === audiencePlatform)), ...savedWeeks]);
-    setAudienceMessage('Monthly audience snapshot saved to cloud.');
+    setAudienceMessage('All changes saved to cloud.');
+    return true;
+  }
+  async function saveAudience(event: FormEvent) {
+    event.preventDefault();
+    await persistAudience();
+  }
+  async function changeAudienceMonth(value: string) {
+    if (audienceDirty.current && !await persistAudience(true)) return;
+    setAudienceMessage('');
+    setAudienceMonth(value);
+  }
+  async function changeAudiencePlatform(value: Platform) {
+    if (audienceDirty.current && !await persistAudience(true)) return;
+    setAudienceMessage('');
+    setAudiencePlatform(value);
   }
 
   async function persistEntry(entry: Entry) {
@@ -738,10 +764,10 @@ export default function Home() {
         </section>
       </section> : <section className="audience-dashboard">
         <div className="audience-header">
-          <div><p className="eyebrow">MONTHLY AUDIENCE INTELLIGENCE</p><h2>Know who is growing with you.</h2><span>Enter one monthly snapshot per platform. Content Flow calculates the story behind the numbers.</span></div>
-          <label><span>Reporting month</span><input type="month" value={audienceMonth} max={currentMonth()} onChange={(event) => setAudienceMonth(event.target.value)} /></label>
+          <div><p className="eyebrow">MONTHLY AUDIENCE INTELLIGENCE</p><h2>Know who is growing with you.</h2><span>Enter monthly audience data for each platform. Content Flow saves automatically and calculates the story behind the numbers.</span></div>
+          <label><span>Reporting month</span><input type="month" value={audienceMonth} max={currentMonth()} onChange={(event) => void changeAudienceMonth(event.target.value)} /></label>
         </div>
-        <div className="audience-platforms">{platforms.map((platform) => { const item = audienceSnapshots.find((snapshot) => snapshot.month === audienceMonth && snapshot.platform === platform); return <button type="button" className={audiencePlatform === platform ? 'active' : ''} key={platform} onClick={() => setAudiencePlatform(platform)}><span>{platform}</span><strong>{item ? `${audienceGrowth(item) >= 0 ? '+' : ''}${audienceGrowth(item).toFixed(1)}%` : 'Add data'}</strong><small>{item ? `${audienceNewFollowers(item) >= 0 ? '+' : ''}${audienceNewFollowers(item).toLocaleString()} followers` : audienceMonth}</small></button>; })}</div>
+        <div className="audience-platforms">{platforms.map((platform) => { const item = audienceSnapshots.find((record) => record.month === audienceMonth && record.platform === platform); return <button type="button" className={audiencePlatform === platform ? 'active' : ''} key={platform} onClick={() => void changeAudiencePlatform(platform)}><span>{platform}</span><strong>{item ? `${audienceGrowth(item) >= 0 ? '+' : ''}${audienceGrowth(item).toFixed(1)}%` : 'Add data'}</strong><small>{item ? `${audienceNewFollowers(item) >= 0 ? '+' : ''}${audienceNewFollowers(item).toLocaleString()} followers` : audienceMonth}</small></button>; })}</div>
         <div className="audience-kpis">
           <article><span>Follower growth</span><strong>{audienceGrowthRate >= 0 ? '+' : ''}{audienceGrowthRate.toFixed(1)}%</strong><small>{audienceNew >= 0 ? '+' : ''}{audienceNew.toLocaleString()} net followers</small></article>
           <article><span>Follow conversion</span><strong>{followConversion.toFixed(2)}%</strong><small>new followers ÷ reach</small></article>
@@ -750,17 +776,17 @@ export default function Home() {
         </div>
         <div className="audience-layout">
           <form className="audience-form" onSubmit={(event) => void saveAudience(event)}>
-            <div className="audience-section-head"><div><span>MONTHLY INPUT</span><h3>{audiencePlatform} · {new Date(`${audienceMonth}-01T00:00:00`).toLocaleDateString('en', { month: 'long', year: 'numeric' })}</h3></div><b>{audienceDraft.id ? 'Saved snapshot' : 'New snapshot'}</b></div>
+            <div className="audience-section-head"><div><span>MONTHLY DATA</span><h3>{audiencePlatform} · {new Date(`${audienceMonth}-01T00:00:00`).toLocaleDateString('en', { month: 'long', year: 'numeric' })}</h3></div><b>{audienceBusy ? 'Saving…' : audienceDraft.id ? 'Cloud saved' : 'Auto-save on'}</b></div>
             <div className="audience-fields five"><label><span>Starting followers</span><input type="number" min="0" value={audienceDraft.startingFollowers || ''} onChange={(event) => updateAudience({ startingFollowers: Math.max(0, Number(event.target.value)) })} /></label><label><span>Ending followers</span><input type="number" min="0" value={audienceDraft.endingFollowers || ''} onChange={(event) => updateAudience({ endingFollowers: Math.max(0, Number(event.target.value)) })} /></label><label><span>Reach</span><input type="number" min="0" value={audienceDraft.reach || ''} onChange={(event) => updateAudience({ reach: Math.max(0, Number(event.target.value)) })} /></label><label><span>Profile visits</span><input type="number" min="0" value={audienceDraft.profileVisits || ''} onChange={(event) => updateAudience({ profileVisits: Math.max(0, Number(event.target.value)) })} /></label><label><span>Link clicks</span><input type="number" min="0" value={audienceDraft.linkClicks || ''} onChange={(event) => updateAudience({ linkClicks: Math.max(0, Number(event.target.value)) })} /></label></div>
             <div className="weekly-audience-head"><div><span>WEEKLY FOLLOWER TRACKING</span><h4>Total Follows and Unfollows are manual. Content Follows come from your posts.</h4></div><div><span>Expected ending</span><strong>{expectedEndingFollowers.toLocaleString()}</strong>{audienceDraft.endingFollowers > 0 && <small className={reconciliationDifference === 0 ? 'match' : 'mismatch'}>{reconciliationDifference === 0 ? '✓ Matches actual' : `${reconciliationDifference > 0 ? '+' : ''}${reconciliationDifference.toLocaleString()} difference`}</small>}</div></div>
             <div className="weekly-audience-table"><div className="weekly-audience-row weekly-labels"><span>Period</span><span>Total follows</span><span>Content follows</span><span>Other follows</span><span>Unfollows</span><span>Net growth</span></div>{weeklyAudienceBreakdown.map((item) => <div className={`weekly-audience-row ${item.otherFollows < 0 ? 'has-mismatch' : ''}`} key={item.weekIndex}><span className="weekly-period"><b>{item.label}</b><small>{item.range}</small></span><label><input aria-label={`${item.label} total follows`} type="number" min="0" value={item.totalFollows || ''} placeholder="0" onChange={(event) => updateAudienceWeek(item.weekIndex, { totalFollows: Math.max(0, Number(event.target.value)) })} /></label><strong>{item.contentFollows.toLocaleString()}</strong><strong className={item.otherFollows < 0 ? 'negative' : ''}>{item.otherFollows.toLocaleString()}{item.otherFollows < 0 && <small>Attribution mismatch</small>}</strong><label><input aria-label={`${item.label} unfollows`} type="number" min="0" value={item.unfollows || ''} placeholder="0" onChange={(event) => updateAudienceWeek(item.weekIndex, { unfollows: Math.max(0, Number(event.target.value)) })} /></label><strong className={item.netGrowth >= 0 ? 'positive' : 'negative'}>{item.netGrowth >= 0 ? '+' : ''}{item.netGrowth.toLocaleString()}</strong></div>)}<div className="weekly-audience-row weekly-total"><span>Monthly total</span><strong>{monthlyTotalFollows.toLocaleString()}</strong><strong>{monthlyContentFollows.toLocaleString()}</strong><strong className={monthlyOtherFollows < 0 ? 'negative' : ''}>{monthlyOtherFollows.toLocaleString()}</strong><strong>{monthlyUnfollows.toLocaleString()}</strong><strong className={monthlyNetGrowth >= 0 ? 'positive' : 'negative'}>{monthlyNetGrowth >= 0 ? '+' : ''}{monthlyNetGrowth.toLocaleString()}</strong></div></div>
             <div className="weekly-legend"><span className="content">Content-attributed Follows</span><span className="other">Other Follows = Total − Content</span><span className="unfollow">Unfollows</span></div>
             <div className="audience-form-label">Audience mix</div>
-            <div className="audience-fields"><label><span>Non-follower reach %</span><input type="number" min="0" max="100" step="0.1" value={audienceDraft.nonFollowerReachPct || ''} onChange={(event) => updateAudience({ nonFollowerReachPct: Math.min(100, Math.max(0, Number(event.target.value))) })} /></label><label><span>Women %</span><input type="number" min="0" max="100" step="0.1" value={audienceDraft.womenPct || ''} onChange={(event) => updateAudience({ womenPct: Math.min(100, Math.max(0, Number(event.target.value))) })} /></label><label><span>Men %</span><input type="number" min="0" max="100" step="0.1" value={audienceDraft.menPct || ''} onChange={(event) => updateAudience({ menPct: Math.min(100, Math.max(0, Number(event.target.value))) })} /></label><label><span>Primary age</span><select value={audienceDraft.primaryAge} onChange={(event) => updateAudience({ primaryAge: event.target.value })}><option value="">Select</option><option>13–17</option><option>18–24</option><option>25–34</option><option>35–44</option><option>45–54</option><option>55+</option></select></label></div>
-            <div className="audience-fields three"><label><span>Top locations</span><input placeholder="Singapore, Kuala Lumpur, Johor" value={audienceDraft.topLocations} onChange={(event) => updateAudience({ topLocations: event.target.value })} /></label><label><span>Most active day</span><select value={audienceDraft.activeDay} onChange={(event) => updateAudience({ activeDay: event.target.value })}><option value="">Select</option>{['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map((day) => <option key={day}>{day}</option>)}</select></label><label><span>Most active time</span><input type="time" value={audienceDraft.activeTime} onChange={(event) => updateAudience({ activeTime: event.target.value })} /></label></div>
+            <div className="audience-fields demographics"><label><span>Women %</span><input type="number" min="0" max="100" step="0.1" value={audienceDraft.womenPct || ''} onChange={(event) => updateAudience({ womenPct: Math.min(100, Math.max(0, Number(event.target.value))) })} /></label><label><span>Men %</span><input type="number" min="0" max="100" step="0.1" value={audienceDraft.menPct || ''} onChange={(event) => updateAudience({ menPct: Math.min(100, Math.max(0, Number(event.target.value))) })} /></label><label><span>Primary age</span><select value={audienceDraft.primaryAge} onChange={(event) => updateAudience({ primaryAge: event.target.value })}><option value="">Select</option><option>13–17</option><option>18–24</option><option>25–34</option><option>35–44</option><option>45–54</option><option>55+</option></select></label></div>
+            <div className="audience-fields three"><label><span>Top locations</span><input placeholder="Singapore, Kuala Lumpur, Johor" value={audienceDraft.topLocations} onChange={(event) => updateAudience({ topLocations: event.target.value })} /></label><label><span>Most active day</span><select value={audienceDraft.activeDay} onChange={(event) => updateAudience({ activeDay: event.target.value })}><option value="">Select</option>{['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map((day) => <option key={day}>{day}</option>)}</select></label><label><span>Most active time range</span><input type="text" placeholder="6–9pm" value={audienceDraft.activeTime} onChange={(event) => updateAudience({ activeTime: event.target.value })} /></label></div>
             <label className="audience-notes"><span>Monthly notes</span><textarea rows={3} placeholder="Campaigns, audience changes or context worth remembering…" value={audienceDraft.notes} onChange={(event) => updateAudience({ notes: event.target.value })} /></label>
             {audienceError && <p className="team-error">{audienceError}</p>}{audienceMessage && <p className="account-success">{audienceMessage}</p>}
-            {member?.role !== 'viewer' && <div className="audience-save"><span>Saved snapshots are shared with your team.</span><button className="primary-button" type="submit" disabled={audienceBusy}>{audienceBusy ? 'Saving…' : 'Save monthly snapshot'}</button></div>}
+            {member?.role !== 'viewer' && <div className="audience-save"><span>Changes save automatically and stay available when you switch months or platforms.</span><button className="primary-button" type="submit" disabled={audienceBusy}>{audienceBusy ? 'Saving…' : 'Save now'}</button></div>}
           </form>
           <aside className="audience-analyst">
             <div className="analyst-title"><span>✦</span><div><p>AUDIENCE ANALYST</p><h3>What changed this month</h3></div></div>
