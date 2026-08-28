@@ -9,21 +9,25 @@ type Brand = 'hustle' | 'second-studio';
 type Role = 'admin' | 'editor' | 'viewer';
 type Member = { id: string; email: string; role: Role; status: 'active' | 'inactive'; created_at?: string };
 type Invite = { email: string; role: Role; status: 'active' | 'inactive'; created_at?: string };
-type Insight = { postUrl: string; views: number; likes: number; shares: number; saves: number };
+type Insight = { postUrl: string; views: number; likes: number; shares: number; saves: number; follows: number };
 type Entry = {
   id: string; date: string; hour: string; minute: string; title: string;
   platforms: Platform[]; referenceUrl: string; filmed: boolean; edited: boolean;
   platformData: Record<Platform, Insight>;
 };
 type StatusKey = 'idea' | 'editing' | 'ready' | 'published';
+type AnalyticsMetric = 'views' | 'interactions' | 'follows' | 'engagementRate';
+type AnalyticsTotals = { posts: number; views: number; likes: number; shares: number; saves: number; follows: number; interactions: number; engagementRate: number };
 
 const platforms: Platform[] = ['IG', 'YouTube', 'Lemon8', 'TikTok'];
 const initialAdminEmail = 'elvis@hustle.com.sg';
 const hours = Array.from({ length: 24 }, (_, index) => String(index).padStart(2, '0'));
 const minutes = ['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'];
-const blankInsight = (): Insight => ({ postUrl: '', views: 0, likes: 0, shares: 0, saves: 0 });
+const blankInsight = (): Insight => ({ postUrl: '', views: 0, likes: 0, shares: 0, saves: 0, follows: 0 });
 const blankPlatformData = (): Record<Platform, Insight> => ({ IG: blankInsight(), YouTube: blankInsight(), Lemon8: blankInsight(), TikTok: blankInsight() });
 const today = () => { const date = new Date(); const offset = date.getTimezoneOffset(); return new Date(date.getTime() - offset * 60000).toISOString().slice(0, 10); };
+const addDays = (value: string, amount: number) => { const date = new Date(`${value}T12:00:00`); date.setDate(date.getDate() + amount); return date.toISOString().slice(0, 10); };
+const inclusiveDays = (start: string, end: string) => Math.max(0, Math.round((new Date(`${end}T12:00:00`).getTime() - new Date(`${start}T12:00:00`).getTime()) / 86400000) + 1);
 const emptyEntry = (): Entry => ({ id: '', date: today(), hour: '12', minute: '00', title: '', platforms: [], referenceUrl: '', filmed: false, edited: false, platformData: blankPlatformData() });
 const insightRate = (data: Insight) => data.views ? ((data.likes + data.shares + data.saves) / data.views) * 100 : 0;
 const publishedPlatforms = (entry: Entry) => entry.platforms.filter((platform) => entry.platformData[platform].postUrl);
@@ -68,6 +72,28 @@ const statusOf = (entry: Entry): { key: StatusKey; label: string } => {
 const safeLink = (value: string) => !value ? '' : /^https?:\/\//i.test(value) ? value : `https://${value}`;
 const storageKey = (brand: Brand) => `content-calendar-entries-${brand}`;
 
+function aggregateAnalytics(entries: Entry[], start: string, end: string, platform: 'all' | Platform): AnalyticsTotals {
+  const totals: AnalyticsTotals = { posts: 0, views: 0, likes: 0, shares: 0, saves: 0, follows: 0, interactions: 0, engagementRate: 0 };
+  entries.filter((entry) => entry.date >= start && entry.date <= end).forEach((entry) => {
+    const selectedPlatforms = entry.platforms.filter((item) => platform === 'all' || item === platform);
+    if (selectedPlatforms.some((item) => Boolean(entry.platformData[item].postUrl))) totals.posts += 1;
+    selectedPlatforms.forEach((item) => {
+      const data = entry.platformData[item];
+      totals.views += data.views;
+      totals.likes += data.likes;
+      totals.shares += data.shares;
+      totals.saves += data.saves;
+      totals.follows += data.follows;
+    });
+  });
+  totals.interactions = totals.likes + totals.shares + totals.saves;
+  totals.engagementRate = totals.views ? (totals.interactions / totals.views) * 100 : 0;
+  return totals;
+}
+
+const analyticsMetricValue = (totals: AnalyticsTotals, metric: AnalyticsMetric) => totals[metric];
+const changeValue = (current: number, previous: number) => previous === 0 ? null : ((current - previous) / previous) * 100;
+
 function normalizeEntry(raw: Record<string, unknown>): Entry {
   const selected = Array.isArray(raw.platforms) ? raw.platforms.filter((item): item is Platform => platforms.includes(item as Platform)) : [];
   const data = blankPlatformData();
@@ -76,7 +102,7 @@ function normalizeEntry(raw: Record<string, unknown>): Entry {
   if (!existing && selected[0]) {
     data[selected[0]] = {
       postUrl: String(raw.postUrl || ''), views: Number(raw.views || 0), likes: Number(raw.likes || 0),
-      shares: Number(raw.shares || 0), saves: Number(raw.saves || 0),
+      shares: Number(raw.shares || 0), saves: Number(raw.saves || 0), follows: Number(raw.follows || 0),
     };
   }
   return {
@@ -111,18 +137,29 @@ export default function Home() {
   const [member, setMember] = useState<Member | null>(null);
   const [authError, setAuthError] = useState('');
   const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
   const [authBusy, setAuthBusy] = useState(false);
-  const [magicLinkSent, setMagicLinkSent] = useState(false);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [draft, setDraft] = useState<Entry>(emptyEntry);
   const [showForm, setShowForm] = useState(false);
-  const [view, setView] = useState<'calendar' | 'list'>('calendar');
+  const [view, setView] = useState<'calendar' | 'list' | 'insights'>('calendar');
   const [activePlatform, setActivePlatform] = useState<Platform>('IG');
   const [platformFilter, setPlatformFilter] = useState<'all' | Platform>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | StatusKey>('all');
+  const [analyticsPlatform, setAnalyticsPlatform] = useState<'all' | Platform>('all');
+  const [analyticsMetric, setAnalyticsMetric] = useState<AnalyticsMetric>('views');
+  const [analyticsPreset, setAnalyticsPreset] = useState<'last7' | 'last30' | 'custom'>('last7');
+  const [analyticsEnd, setAnalyticsEnd] = useState(today);
+  const [analyticsStart, setAnalyticsStart] = useState(() => addDays(today(), -6));
+  const [compareAnalytics, setCompareAnalytics] = useState(true);
   const [syncState, setSyncState] = useState<'loading' | 'saving' | 'synced' | 'error'>('loading');
   const [localImportCount, setLocalImportCount] = useState(0);
   const [showTeam, setShowTeam] = useState(false);
+  const [showAccount, setShowAccount] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [accountMessage, setAccountMessage] = useState('');
+  const [accountError, setAccountError] = useState('');
   const [members, setMembers] = useState<Member[]>([]);
   const [invites, setInvites] = useState<Invite[]>([]);
   const [inviteEmail, setInviteEmail] = useState('');
@@ -202,6 +239,10 @@ export default function Home() {
     (platformFilter === 'all' || entry.platforms.includes(platformFilter)) &&
     (statusFilter === 'all' || statusOf(entry).key === statusFilter)
   ), [entries, platformFilter, statusFilter]);
+  const selectedMonthEntries = useMemo(() => entries.filter((entry) => {
+    const date = new Date(`${entry.date}T00:00:00`);
+    return date.getFullYear() === month.getFullYear() && date.getMonth() === month.getMonth();
+  }), [entries, month]);
   const monthEntries = useMemo(() => filteredEntries.filter((entry) => {
     const date = new Date(`${entry.date}T00:00:00`);
     return date.getFullYear() === month.getFullYear() && date.getMonth() === month.getMonth();
@@ -211,9 +252,47 @@ export default function Home() {
     const days = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
     return [...Array(firstDay).fill(null), ...Array.from({ length: days }, (_, i) => i + 1)];
   }, [month]);
-  const published = entries.filter((entry) => publishedPlatforms(entry).length).length;
-  const ready = entries.filter((entry) => statusOf(entry).key === 'ready').length;
-  const bestScore = entries.reduce((top, entry) => Math.max(top, overallViralScore(entry, entries)), 0);
+  const published = selectedMonthEntries.filter((entry) => publishedPlatforms(entry).length).length;
+  const ready = selectedMonthEntries.filter((entry) => statusOf(entry).key === 'ready').length;
+  const bestScore = selectedMonthEntries.reduce((top, entry) => Math.max(top, overallViralScore(entry, selectedMonthEntries)), 0);
+  const summaryMonthLabel = month.toLocaleDateString('en', { month: 'short', year: 'numeric' });
+  const analyticsDuration = inclusiveDays(analyticsStart, analyticsEnd);
+  const comparisonEnd = analyticsDuration ? addDays(analyticsStart, -1) : analyticsStart;
+  const comparisonStart = analyticsDuration ? addDays(comparisonEnd, -(analyticsDuration - 1)) : analyticsStart;
+  const analyticsTotals = useMemo(() => aggregateAnalytics(entries, analyticsStart, analyticsEnd, analyticsPlatform), [entries, analyticsStart, analyticsEnd, analyticsPlatform]);
+  const comparisonTotals = useMemo(() => aggregateAnalytics(entries, comparisonStart, comparisonEnd, analyticsPlatform), [entries, comparisonStart, comparisonEnd, analyticsPlatform]);
+  const analyticsBuckets = useMemo(() => {
+    if (!analyticsDuration) return [];
+    const bucketSize = analyticsDuration > 45 ? Math.ceil(analyticsDuration / 24) : 1;
+    const buckets: { label: string; current: number; previous: number }[] = [];
+    for (let offset = 0; offset < analyticsDuration; offset += bucketSize) {
+      const currentStart = addDays(analyticsStart, offset);
+      const proposedCurrentEnd = addDays(currentStart, bucketSize - 1);
+      const currentEnd = proposedCurrentEnd > analyticsEnd ? analyticsEnd : proposedCurrentEnd;
+      const previousStart = addDays(comparisonStart, offset);
+      const previousEnd = addDays(previousStart, inclusiveDays(currentStart, currentEnd) - 1);
+      buckets.push({
+        label: new Date(`${currentStart}T00:00:00`).toLocaleDateString('en', { month: 'short', day: 'numeric' }),
+        current: analyticsMetricValue(aggregateAnalytics(entries, currentStart, currentEnd, analyticsPlatform), analyticsMetric),
+        previous: analyticsMetricValue(aggregateAnalytics(entries, previousStart, previousEnd, analyticsPlatform), analyticsMetric),
+      });
+    }
+    return buckets;
+  }, [entries, analyticsStart, analyticsEnd, analyticsPlatform, analyticsMetric, analyticsDuration, comparisonStart]);
+  const analyticsChartMax = Math.max(1, ...analyticsBuckets.flatMap((bucket) => [bucket.current, compareAnalytics ? bucket.previous : 0]));
+  const analyticsRangeEntries = useMemo(() => entries.filter((entry) => entry.date >= analyticsStart && entry.date <= analyticsEnd && (analyticsPlatform === 'all' || entry.platforms.includes(analyticsPlatform))), [entries, analyticsStart, analyticsEnd, analyticsPlatform]);
+  const topContents = useMemo(() => analyticsRangeEntries.map((entry) => {
+    const selectedPlatforms = entry.platforms.filter((platform) => analyticsPlatform === 'all' || platform === analyticsPlatform);
+    const data = selectedPlatforms.map((platform) => entry.platformData[platform]);
+    const views = data.reduce((sum, item) => sum + item.views, 0);
+    const interactions = data.reduce((sum, item) => sum + item.likes + item.shares + item.saves, 0);
+    const follows = data.reduce((sum, item) => sum + item.follows, 0);
+    const rate = views ? (interactions / views) * 100 : 0;
+    const score = analyticsPlatform === 'all'
+      ? overallViralScore(entry, analyticsRangeEntries)
+      : platformViralScore(entry.platformData[analyticsPlatform], analyticsPlatform, analyticsRangeEntries, entry.id);
+    return { entry, selectedPlatforms, views, follows, rate, score, isPublished: selectedPlatforms.some((platform) => Boolean(entry.platformData[platform].postUrl)) };
+  }).filter((item) => item.isPublished).sort((a, b) => b.score - a.score || b.views - a.views).slice(0, 5), [analyticsRangeEntries, analyticsPlatform]);
 
   async function persistEntry(entry: Entry) {
     if (!authUser) return;
@@ -260,19 +339,29 @@ export default function Home() {
     event.preventDefault();
     const email = authEmail.trim().toLowerCase();
     if (!/^\S+@\S+\.\S+$/.test(email)) { setAuthError('Enter a valid email address.'); return; }
+    if (!authPassword) { setAuthError('Enter your password.'); return; }
     setAuthError('');
     setAuthBusy(true);
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: window.location.origin, shouldCreateUser: true },
-    });
+    const { error } = await supabase.auth.signInWithPassword({ email, password: authPassword });
     setAuthBusy(false);
     if (error) { setAuthError(error.message); return; }
-    setMagicLinkSent(true);
+  }
+  async function changePassword(event: FormEvent) {
+    event.preventDefault();
+    setAccountError('');
+    setAccountMessage('');
+    if (newPassword.length < 8) { setAccountError('Use at least 8 characters.'); return; }
+    if (newPassword !== confirmPassword) { setAccountError('The passwords do not match.'); return; }
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) { setAccountError(error.message); return; }
+    setNewPassword('');
+    setConfirmPassword('');
+    setAccountMessage('Password updated successfully.');
   }
   async function signOut() {
     await supabase.auth.signOut();
     setShowTeam(false);
+    setShowAccount(false);
     setEntries([]);
   }
   async function refreshTeam() {
@@ -327,9 +416,24 @@ export default function Home() {
   function updateInsight(platform: Platform, patch: Partial<Insight>) {
     setDraft({ ...draft, platformData: { ...draft.platformData, [platform]: { ...draft.platformData[platform], ...patch } } });
   }
+  function applyAnalyticsPreset(preset: 'last7' | 'last30') {
+    const end = today();
+    setAnalyticsPreset(preset);
+    setAnalyticsEnd(end);
+    setAnalyticsStart(addDays(end, preset === 'last7' ? -6 : -29));
+  }
   const monthKey = (day: number) => `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
   const syncLabel = syncState === 'loading' ? 'Connecting…' : syncState === 'saving' ? 'Saving…' : syncState === 'error' ? 'Sync failed' : 'Cloud synced';
   const activeViralScore = platformViralScore(draft.platformData[activePlatform], activePlatform, entries, draft.id);
+  const compactNumber = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
+  const analyticsCards = [
+    { label: 'Views', value: compactNumber.format(analyticsTotals.views), current: analyticsTotals.views, previous: comparisonTotals.views },
+    { label: 'Interactions', value: compactNumber.format(analyticsTotals.interactions), current: analyticsTotals.interactions, previous: comparisonTotals.interactions },
+    { label: 'Engagement rate', value: `${analyticsTotals.engagementRate.toFixed(1)}%`, current: analyticsTotals.engagementRate, previous: comparisonTotals.engagementRate },
+    { label: 'Follows', value: compactNumber.format(analyticsTotals.follows), current: analyticsTotals.follows, previous: comparisonTotals.follows },
+    { label: 'Published posts', value: analyticsTotals.posts.toLocaleString(), current: analyticsTotals.posts, previous: comparisonTotals.posts },
+  ];
+  const analyticsMetricLabel = analyticsMetric === 'engagementRate' ? 'Engagement rate' : analyticsMetric[0].toUpperCase() + analyticsMetric.slice(1);
 
   if (authStatus === 'loading') return <main className="auth-shell"><div className="auth-card"><span className="auth-spark">✦</span><h1>Content Flow</h1><p>Connecting your workspace…</p></div></main>;
 
@@ -350,10 +454,8 @@ export default function Home() {
         <div className="login-benefits"><span>● Two brands</span><span>● One team</span><span>● Live cloud sync</span></div>
       </div>
       <div className="login-form-panel">
-        <div className="login-form-heading"><span>SECURE WORKSPACE</span><h2>Welcome back.</h2><p>Enter your approved work email. We’ll send you a secure link—no password needed.</p></div>
-        {magicLinkSent
-          ? <div className="magic-link-success"><strong>Check your inbox</strong><span>We sent a secure sign-in link to {authEmail.trim().toLowerCase()}.</span><button type="button" onClick={() => { setMagicLinkSent(false); setAuthError(''); }}>Use a different email</button></div>
-          : <form className="email-login" onSubmit={(event) => void signInWithEmail(event)}><label htmlFor="login-email">Work email</label><input id="login-email" type="email" autoComplete="email" required placeholder="you@company.com" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} /><button className="email-login-button" type="submit" disabled={authBusy}>{authBusy ? 'Sending your link…' : 'Continue with email'}<span>→</span></button></form>}
+        <div className="login-form-heading"><span>SECURE WORKSPACE</span><h2>Welcome back.</h2><p>Sign in with the email and password provided by your admin.</p></div>
+        <form className="email-login" onSubmit={(event) => void signInWithEmail(event)}><label htmlFor="login-email">Work email</label><input id="login-email" type="email" autoComplete="email" required placeholder="you@company.com" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} /><label htmlFor="login-password">Password</label><input id="login-password" type="password" autoComplete="current-password" required placeholder="Enter your password" value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} /><button className="email-login-button" type="submit" disabled={authBusy}>{authBusy ? 'Signing in…' : 'Sign in'}<span>→</span></button></form>
         {authError && <small className="auth-error">{authError}</small>}
         <div className="login-access-note"><span>✓</span><p><strong>Admin-approved access</strong><small>Only invited team members can enter the calendar.</small></p></div>
       </div>
@@ -373,7 +475,7 @@ export default function Home() {
         <button type="button" role="tab" aria-selected={brand === 'hustle'} className={brand === 'hustle' ? 'active' : ''} onClick={() => setBrand('hustle')}>hustle.</button>
         <button type="button" role="tab" aria-selected={brand === 'second-studio'} className={brand === 'second-studio' ? 'active' : ''} onClick={() => setBrand('second-studio')}>The Second Studio</button>
       </div>
-      <div className="top-actions"><span className={`sync-pill ${syncState}`}>● {syncLabel}</span>{member?.role === 'admin' && <button className="account-button admin-settings-button" onClick={() => { setShowTeam(true); void refreshTeam(); }}>Admin settings</button>}<button className="account-button user-account" title={`${member?.email} · click to sign out`} onClick={() => void signOut()}>{member?.email.split('@')[0]} · {member?.role}</button>{member?.role !== 'viewer' && <button className="primary-button" onClick={() => openNew()}><span>＋</span> Add content</button>}</div>
+      <div className="top-actions"><span className={`sync-pill ${syncState}`}>● {syncLabel}</span>{member?.role === 'admin' && <button className="account-button admin-settings-button" onClick={() => { setShowTeam(true); void refreshTeam(); }}>Admin settings</button>}<button className="account-button user-account" title={`${member?.email} · account settings`} onClick={() => { setShowAccount(true); setAccountError(''); setAccountMessage(''); }}>{member?.email.split('@')[0]} · {member?.role}</button>{member?.role !== 'viewer' && <button className="primary-button" onClick={() => openNew()}><span>＋</span> Add content</button>}</div>
     </header>
 
     {localImportCount > 0 && member?.role !== 'viewer' && <aside className="import-banner"><div><strong>Bring your existing content to the cloud</strong><span>{localImportCount} item{localImportCount === 1 ? '' : 's'} found on this device for {brand === 'hustle' ? 'hustle.' : 'The Second Studio'}.</span></div><button onClick={() => void importLocalEntries()}>Import to cloud</button></aside>}
@@ -381,26 +483,26 @@ export default function Home() {
     <section className="hero">
       <div><p className="eyebrow">{brand === 'hustle' ? 'HUSTLE CONTENT CALENDAR' : 'THE SECOND STUDIO CONTENT CALENDAR'}</p><h1>Keep every idea moving.</h1><p className="hero-copy">Plan once, publish everywhere, and compare what connects on every platform.</p></div>
       <div className="summary-grid">
-        <div className="summary-card"><span>Scheduled</span><strong>{entries.length}</strong><small>total posts</small></div>
-        <div className="summary-card"><span>Ready</span><strong>{ready}</strong><small>ready to publish</small></div>
-        <div className="summary-card accent"><span>Published</span><strong>{published}</strong><small>with post links</small></div>
-        <div className="summary-card"><span>Best Viral Score</span><strong>{Math.round(bestScore)}</strong><small>out of 100</small></div>
+        <div className="summary-card"><span>Scheduled</span><strong>{selectedMonthEntries.length}</strong><small>{summaryMonthLabel} posts</small></div>
+        <div className="summary-card"><span>Ready</span><strong>{ready}</strong><small>in {summaryMonthLabel}</small></div>
+        <div className="summary-card accent"><span>Published</span><strong>{published}</strong><small>in {summaryMonthLabel}</small></div>
+        <div className="summary-card"><span>Best Viral Score</span><strong>{Math.round(bestScore)}</strong><small>{summaryMonthLabel} · out of 100</small></div>
       </div>
     </section>
 
     <section className="workspace">
       <div className="workspace-head">
-        <div className="view-tabs"><button className={view === 'calendar' ? 'active' : ''} onClick={() => setView('calendar')}>Calendar</button><button className={view === 'list' ? 'active' : ''} onClick={() => setView('list')}>Content list</button></div>
+        <div className="view-tabs"><button className={view === 'calendar' ? 'active' : ''} onClick={() => setView('calendar')}>Calendar</button><button className={view === 'list' ? 'active' : ''} onClick={() => setView('list')}>Content list</button><button className={view === 'insights' ? 'active' : ''} onClick={() => setView('insights')}>Insights</button></div>
         {view === 'calendar' && <div className="month-nav"><button aria-label="Previous month" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}>←</button><strong>{month.toLocaleDateString('en', { month: 'long', year: 'numeric' })}</strong><button aria-label="Next month" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}>→</button></div>}
       </div>
-      <div className="filters"><span>Show</span><select aria-label="Filter by platform" value={platformFilter} onChange={(event) => setPlatformFilter(event.target.value as 'all' | Platform)}><option value="all">All platforms</option>{platforms.map((platform) => <option key={platform}>{platform}</option>)}</select><select aria-label="Filter by status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as 'all' | StatusKey)}><option value="all">All statuses</option><option value="idea">Idea / Filming</option><option value="editing">Editing</option><option value="ready">Ready</option><option value="published">Published</option></select><small>{filteredEntries.length} content item{filteredEntries.length === 1 ? '' : 's'}</small></div>
+      {view !== 'insights' && <div className="filters"><span>Show</span><select aria-label="Filter by platform" value={platformFilter} onChange={(event) => setPlatformFilter(event.target.value as 'all' | Platform)}><option value="all">All platforms</option>{platforms.map((platform) => <option key={platform}>{platform}</option>)}</select><select aria-label="Filter by status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as 'all' | StatusKey)}><option value="all">All statuses</option><option value="idea">Idea / Filming</option><option value="editing">Editing</option><option value="ready">Ready</option><option value="published">Published</option></select><small>{filteredEntries.length} content item{filteredEntries.length === 1 ? '' : 's'}</small></div>}
 
       {view === 'calendar' ? <div className="calendar-wrap">
         <div className="weekdays">{['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((day) => <span key={day}>{day}</span>)}</div>
         <div className="calendar-grid">{calendarDays.map((day, index) => day === null ? <div className="day empty" key={`empty-${index}`} /> : <button className="day" key={day} onClick={() => openNew(monthKey(day))}>
           <span className="day-number">{day}</span><div className="day-posts">{monthEntries.filter((entry) => entry.date === monthKey(day)).slice(0, 3).map((entry) => { const status = statusOf(entry); return <span className={`calendar-post status-${status.key}`} key={entry.id} onClick={(event) => { event.stopPropagation(); openEdit(entry); }}><b>{entry.hour}:{entry.minute}</b> {entry.title}</span>; })}</div>
         </button>)}</div>
-      </div> : <div className="content-list">
+      </div> : view === 'list' ? <div className="content-list">
         {filteredEntries.length === 0 ? <div className="empty-state"><span>✦</span><h2>{entries.length ? 'Nothing matches yet' : 'Your content starts here'}</h2><p>{entries.length ? 'Try another platform or status filter.' : 'Add your first idea and give it a date.'}</p>{!entries.length && member?.role !== 'viewer' && <button className="primary-button" onClick={() => openNew()}>Add content</button>}</div> : filteredEntries.slice().sort((a,b) => a.date.localeCompare(b.date)).map((entry) => {
           const rate = overallRate(entry); const score = overallViralScore(entry, entries); const status = statusOf(entry);
           const views = totalViews(entry);
@@ -410,7 +512,31 @@ export default function Home() {
             <div className="content-main"><div className="card-title-row"><h3>{entry.title}</h3><div className="platforms-mini">{entry.platforms.map((platform) => <span className={entry.platformData[platform].postUrl ? 'posted' : ''} key={platform}>{entry.platformData[platform].postUrl ? '✓ ' : ''}{platform}</span>)}</div></div><div className="status-row"><span className={`status-badge ${status.key}`}>● {status.label}</span><span className={entry.filmed ? 'complete' : ''}>● Filming</span><span className={entry.edited ? 'complete' : ''}>● Editing</span></div><div className="rate-row"><div><span>Viral Score</span><strong>{views ? `${Math.round(score)}/100` : 'No data'}</strong></div><div className="progress"><span style={{ width: `${score}%` }} /></div><small>{views.toLocaleString()} views · {rate.toFixed(1)}% ER · {interactions.toLocaleString()} interactions</small></div></div><span className="edit-arrow">›</span>
           </article>;
         })}
-      </div>}
+      </div> : <section className="analytics-dashboard">
+        <div className="analytics-header">
+          <div><p className="eyebrow">PERFORMANCE OVERVIEW</p><h2>Content insights</h2><span>Metrics are grouped by each content item’s publish date.</span></div>
+          <select aria-label="Insights platform" value={analyticsPlatform} onChange={(event) => setAnalyticsPlatform(event.target.value as 'all' | Platform)}><option value="all">All platforms</option>{platforms.map((platform) => <option key={platform}>{platform}</option>)}</select>
+        </div>
+        <div className="analytics-controls">
+          <div className="preset-buttons"><button className={analyticsPreset === 'last7' ? 'active' : ''} onClick={() => applyAnalyticsPreset('last7')}>Last week</button><button className={analyticsPreset === 'last30' ? 'active' : ''} onClick={() => applyAnalyticsPreset('last30')}>Last month</button><button className={analyticsPreset === 'custom' ? 'active' : ''} onClick={() => setAnalyticsPreset('custom')}>Custom</button></div>
+          <div className="date-range"><label><span>From</span><input type="date" value={analyticsStart} onChange={(event) => { setAnalyticsPreset('custom'); setAnalyticsStart(event.target.value); }} /></label><i>→</i><label><span>To</span><input type="date" value={analyticsEnd} min={analyticsStart} onChange={(event) => { setAnalyticsPreset('custom'); setAnalyticsEnd(event.target.value); }} /></label></div>
+          <label className="compare-toggle"><input type="checkbox" checked={compareAnalytics} onChange={(event) => setCompareAnalytics(event.target.checked)} /><span>Compare previous period</span></label>
+        </div>
+        <div className="analytics-kpis">{analyticsCards.map((card) => {
+          const change = changeValue(card.current, card.previous);
+          const positive = change !== null ? change >= 0 : card.current > 0;
+          return <article className="analytics-kpi" key={card.label}><span>{card.label}</span><strong>{card.value}</strong>{compareAnalytics && <small className={positive ? 'up' : 'down'}>{change === null ? (card.current > 0 ? 'New' : '0%') : `${change >= 0 ? '↑' : '↓'} ${Math.abs(change).toFixed(1)}%`} <i>vs previous</i></small>}</article>;
+        })}</div>
+        <div className="analytics-chart-card">
+          <div className="chart-head"><div><span>{analyticsMetricLabel} trend</span><small>{analyticsStart} – {analyticsEnd}{compareAnalytics ? ` · compared with ${comparisonStart} – ${comparisonEnd}` : ''}</small></div><select aria-label="Chart metric" value={analyticsMetric} onChange={(event) => setAnalyticsMetric(event.target.value as AnalyticsMetric)}><option value="views">Views</option><option value="interactions">Interactions</option><option value="follows">Follows</option><option value="engagementRate">Engagement rate</option></select></div>
+          {analyticsBuckets.length ? <><div className="chart-legend"><span className="current">Current period</span>{compareAnalytics && <span className="previous">Previous period</span>}</div><div className="bar-chart">{analyticsBuckets.map((bucket, index) => <div className="bar-column" key={`${bucket.label}-${index}`} title={`${bucket.label}: ${bucket.current.toLocaleString()}${compareAnalytics ? ` · previous ${bucket.previous.toLocaleString()}` : ''}`}><div className="bar-pair">{compareAnalytics && <i className="previous-bar" style={{ height: `${Math.max(bucket.previous ? 3 : 0, (bucket.previous / analyticsChartMax) * 100)}%` }} />}<i className="current-bar" style={{ height: `${Math.max(bucket.current ? 3 : 0, (bucket.current / analyticsChartMax) * 100)}%` }} /></div><span>{index % Math.max(1, Math.ceil(analyticsBuckets.length / 7)) === 0 ? bucket.label : ''}</span></div>)}</div></> : <div className="analytics-empty">Choose a valid date range to see your chart.</div>}
+        </div>
+        <div className="analytics-breakdown"><div><span>Likes</span><strong>{compactNumber.format(analyticsTotals.likes)}</strong></div><div><span>Shares</span><strong>{compactNumber.format(analyticsTotals.shares)}</strong></div><div><span>Saves</span><strong>{compactNumber.format(analyticsTotals.saves)}</strong></div><div><span>Follows</span><strong>{compactNumber.format(analyticsTotals.follows)}</strong></div></div>
+        <section className="top-content-section">
+          <div className="top-content-head"><div><span>TOP PERFORMERS</span><h3>Top 5 contents</h3><small>Ranked by Viral Score for {analyticsStart} – {analyticsEnd}</small></div><b>{analyticsPlatform === 'all' ? 'All platforms' : analyticsPlatform}</b></div>
+          {topContents.length ? <div className="top-content-list">{topContents.map((item, index) => <article className="top-content-row" key={item.entry.id} onClick={() => openEdit(item.entry)}><span className={`rank rank-${index + 1}`}>{index + 1}</span><div className="top-content-info"><strong>{item.entry.title}</strong><small>{new Date(`${item.entry.date}T00:00:00`).toLocaleDateString('en', { day: 'numeric', month: 'short', year: 'numeric' })} · {item.selectedPlatforms.join(' · ')}</small></div><div className="top-content-metrics"><span><small>Views</small><b>{compactNumber.format(item.views)}</b></span><span><small>ER</small><b>{item.rate.toFixed(1)}%</b></span><span><small>Follows</small><b>{compactNumber.format(item.follows)}</b></span></div><div className="top-content-score"><strong>{Math.round(item.score)}</strong><small>Viral Score</small><i><span style={{ width: `${item.score}%` }} /></i></div></article>)}</div> : <div className="top-content-empty">No published content with insights in this date range.</div>}
+        </section>
+      </section>}
     </section>
 
     {showForm && <div className="modal-backdrop" onMouseDown={() => setShowForm(false)}><form className="editor" onSubmit={submit} onMouseDown={(event) => event.stopPropagation()}>
@@ -422,15 +548,21 @@ export default function Home() {
       <div className="field full"><span>Production status</span><div className="status-picker"><button type="button" className={draft.filmed ? 'selected' : ''} onClick={() => setDraft({ ...draft, filmed: !draft.filmed })}><i>{draft.filmed ? '✓' : ''}</i>Filming complete</button><button type="button" className={draft.edited ? 'selected' : ''} onClick={() => setDraft({ ...draft, edited: !draft.edited })}><i>{draft.edited ? '✓' : ''}</i>Editing complete</button></div></div>
 
       {draft.id && draft.platforms.length > 0 && <section className="publishing-section"><div className="section-title"><div><span>Published posts & insights</span><small>Each platform keeps its own URL and performance.</small></div><b>{publishedPlatforms(draft).length}/{draft.platforms.length} live</b></div><div className="platform-tabs">{draft.platforms.map((platform) => <button type="button" className={activePlatform === platform ? 'active' : ''} key={platform} onClick={() => setActivePlatform(platform)}>{draft.platformData[platform].postUrl ? '✓ ' : ''}{platform}</button>)}</div>
-        {draft.platforms.includes(activePlatform) && <div className="platform-insights"><label className="field"><span>{activePlatform} post URL</span><input type="url" placeholder="Attach after publishing" value={draft.platformData[activePlatform].postUrl} onChange={(event) => updateInsight(activePlatform, { postUrl: event.target.value })} />{draft.platformData[activePlatform].postUrl && <a href={safeLink(draft.platformData[activePlatform].postUrl)} target="_blank" rel="noreferrer">View post ↗</a>}</label><div className="insights"><div className="insights-head"><div><span>{activePlatform} insights</span><small>Compared with your {activePlatform} content median</small></div><strong>{Math.round(activeViralScore)}/100</strong></div><div className="metrics">{(['views','likes','shares','saves'] as const).map((metric) => <label key={metric}><span>{metric}</span><input min="0" type="number" value={draft.platformData[activePlatform][metric] || ''} placeholder="0" onChange={(event) => updateInsight(activePlatform, { [metric]: Math.max(0, Number(event.target.value)) })} /></label>)}</div><div className="formula"><span style={{ width: `${activeViralScore}%` }} /><small>Viral Score · 50% Reach + 50% ER</small></div><p className="er-formula">{insightRate(draft.platformData[activePlatform]).toFixed(1)}% ER = (Likes + Shares + Saves) ÷ Views × 100%</p></div></div>}
+        {draft.platforms.includes(activePlatform) && <div className="platform-insights"><label className="field"><span>{activePlatform} post URL</span><input type="url" placeholder="Attach after publishing" value={draft.platformData[activePlatform].postUrl} onChange={(event) => updateInsight(activePlatform, { postUrl: event.target.value })} />{draft.platformData[activePlatform].postUrl && <a href={safeLink(draft.platformData[activePlatform].postUrl)} target="_blank" rel="noreferrer">View post ↗</a>}</label><div className="insights"><div className="insights-head"><div><span>{activePlatform} insights</span><small>Compared with your {activePlatform} content median</small></div><strong>{Math.round(activeViralScore)}/100</strong></div><div className="metrics">{(['views','likes','shares','saves','follows'] as const).map((metric) => <label key={metric}><span>{metric}</span><input min="0" type="number" value={draft.platformData[activePlatform][metric] || ''} placeholder="0" onChange={(event) => updateInsight(activePlatform, { [metric]: Math.max(0, Number(event.target.value)) })} /></label>)}</div><div className="formula"><span style={{ width: `${activeViralScore}%` }} /><small>Viral Score · 50% Reach + 50% ER</small></div><p className="er-formula">{insightRate(draft.platformData[activePlatform]).toFixed(1)}% ER = (Likes + Shares + Saves) ÷ Views × 100%</p></div></div>}
       </section>}
       {!draft.id && <div className="progressive-note"><span>✦</span><p><strong>Keep planning simple.</strong> Post URLs and insights appear after you add this idea to the calendar.</p></div>}
       <div className="editor-actions">{draft.id && <button type="button" className="delete" onClick={() => void removeEntry()}>Delete</button>}<button type="button" className="secondary-button" onClick={() => setShowForm(false)}>Cancel</button><button type="submit" className="primary-button">{draft.id ? 'Save changes' : 'Add to calendar'}</button></div>
     </form></div>}
 
+    {showAccount && <div className="modal-backdrop" onMouseDown={() => setShowAccount(false)}><section className="account-panel" onMouseDown={(event) => event.stopPropagation()}>
+      <div className="editor-head"><div><p className="eyebrow">ACCOUNT</p><h2>Your sign-in</h2><span className="team-subtitle">{member?.email} · {member?.role}</span></div><button type="button" className="close" onClick={() => setShowAccount(false)}>×</button></div>
+      <form className="password-form" onSubmit={(event) => void changePassword(event)}><div className="account-note"><span>✦</span><p><strong>Change your temporary password</strong><small>Use at least 8 characters and keep it private.</small></p></div><label className="field"><span>New password</span><input type="password" minLength={8} autoComplete="new-password" required value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /></label><label className="field"><span>Confirm new password</span><input type="password" minLength={8} autoComplete="new-password" required value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} /></label>{accountError && <p className="team-error">{accountError}</p>}{accountMessage && <p className="account-success">{accountMessage}</p>}<div className="account-actions"><button type="button" className="delete" onClick={() => void signOut()}>Sign out</button><button type="submit" className="primary-button">Update password</button></div></form>
+    </section></div>}
+
     {showTeam && member?.role === 'admin' && <div className="modal-backdrop" onMouseDown={() => setShowTeam(false)}><section className="team-panel" onMouseDown={(event) => event.stopPropagation()}>
       <div className="editor-head"><div><p className="eyebrow">ADMIN SETTINGS</p><h2>Manage team access</h2><span className="team-subtitle">Only approved emails can enter Content Flow.</span></div><button type="button" className="close" onClick={() => setShowTeam(false)}>×</button></div>
       <form className="invite-form" onSubmit={addTeamMember}><label className="field"><span>Email address</span><input type="email" required placeholder="name@company.com" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} /></label><label className="field"><span>Role</span><select value={inviteRole} onChange={(event) => setInviteRole(event.target.value as Role)}><option value="editor">Editor</option><option value="viewer">Viewer</option><option value="admin">Admin</option></select></label><button className="primary-button" type="submit">Add access</button></form>
+      <div className="admin-account-note"><span>1</span><p><strong>Approve the email here.</strong><small>Then create the same email with a temporary password in Supabase → Authentication → Users → Add user. Turn on Auto Confirm User.</small></p></div>
       {teamError && <p className="team-error">{teamError}</p>}
       <div className="role-guide"><span><b>Admin</b> manages people and content</span><span><b>Editor</b> updates content</span><span><b>Viewer</b> reads only</span></div>
       <div className="team-list"><div className="team-list-head"><span>People with access</span><small>{members.filter((item) => item.status === 'active').length + invites.filter((invite) => invite.status === 'active' && !members.some((item) => item.email === invite.email)).length} active</small></div>

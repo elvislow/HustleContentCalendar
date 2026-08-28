@@ -1,17 +1,28 @@
 # Content Flow
 
-A Vercel-ready, multi-brand content calendar for **hustle.** and **The Second Studio**, with Supabase cloud sync, passwordless email login, team roles and realtime updates.
+A Vercel-ready, multi-brand content calendar for **hustle.** and **The Second Studio**, with Supabase cloud sync, admin-managed email/password accounts, team roles and realtime updates.
+
+The Insights view aggregates Views, Likes, Shares, Saves and Follows by content publish date. It supports Last week, Last month, custom ranges, automatic previous-period comparison, percentage change and visual trend charts. Follows are stored inside the existing `platform_data` JSON, so no database migration is required.
 
 ## One-time Supabase setup
 
 1. Open your Supabase project.
 2. Go to **SQL Editor**, open `supabase/setup.sql` from this repository, and run the entire file once.
-3. Go to **Authentication → Sign In / Providers → Email** and confirm Email is enabled. No password or Google credentials are required.
-4. In **Authentication → URL Configuration**:
-   - Set **Site URL** to your production Vercel URL.
-   - Add your Vercel production URL and `http://localhost:3000` to Redirect URLs.
+3. Go to **Authentication → Sign In / Providers → Email**, confirm Email is enabled, and turn off public new-user signups if that option is shown.
+4. Go to **Authentication → Users → Add user → Create new user**.
+5. Create `elvis@hustle.com.sg` with a temporary password and turn on **Auto Confirm User**.
 
-The first approved admin is `elvis@hustle.com.sg`. Enter that address on the login page, then open the secure link sent by Supabase. After signing in, the account can open **Admin settings** and approve more emails as Admin, Editor or Viewer.
+Sign in with that email and temporary password. The first approved admin is `elvis@hustle.com.sg`; it can open **Admin settings** and approve more emails as Admin, Editor or Viewer.
+
+## Add another team member
+
+1. In Content Flow, open **Admin settings** and approve the person's email and role.
+2. In Supabase, go to **Authentication → Users → Add user → Create new user**.
+3. Create the same email with a temporary password and turn on **Auto Confirm User**.
+4. Give the temporary password to the person securely.
+5. After signing in, the person can open their account menu and choose a new password.
+
+This flow does not send login emails and is not affected by Supabase email rate limits.
 
 ## Deploy
 
