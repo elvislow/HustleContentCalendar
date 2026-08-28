@@ -102,6 +102,21 @@ function aggregateAnalytics(entries: Entry[], start: string, end: string, platfo
 
 const analyticsMetricValue = (totals: AnalyticsTotals, metric: AnalyticsMetric) => totals[metric];
 const changeValue = (current: number, previous: number) => previous === 0 ? null : ((current - previous) / previous) * 100;
+type ChartPoint = { x: number; y: number; value: number };
+const chartPoints = (values: number[], maximum: number, width: number, height: number, padding: number): ChartPoint[] => values.map((value, index) => ({
+  x: values.length === 1 ? width / 2 : padding + (index / (values.length - 1)) * (width - padding * 2),
+  y: height - padding - (value / Math.max(1, maximum)) * (height - padding * 2),
+  value,
+}));
+const smoothChartPath = (points: ChartPoint[]) => {
+  if (!points.length) return '';
+  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+  return points.slice(1).reduce((path, point, index) => {
+    const previous = points[index];
+    const midpoint = (previous.x + point.x) / 2;
+    return `${path} C ${midpoint} ${previous.y}, ${midpoint} ${point.y}, ${point.x} ${point.y}`;
+  }, `M ${points[0].x} ${points[0].y}`);
+};
 const blankAudience = (month = currentMonth(), platform: Platform = 'IG'): AudienceSnapshot => ({ id: undefined, month, platform, startingFollowers: 0, endingFollowers: 0, reach: 0, profileVisits: 0, linkClicks: 0, nonFollowerReachPct: 0, womenPct: 0, menPct: 0, primaryAge: '', topLocations: '', activeDay: '', activeTime: '', notes: '' });
 const audienceGrowth = (item?: AudienceSnapshot) => item?.startingFollowers ? ((item.endingFollowers - item.startingFollowers) / item.startingFollowers) * 100 : 0;
 const audienceNewFollowers = (item?: AudienceSnapshot) => item ? item.endingFollowers - item.startingFollowers : 0;
@@ -354,7 +369,7 @@ export default function Home() {
   const comparisonTotals = useMemo(() => aggregateAnalytics(entries, comparisonStart, comparisonEnd, analyticsPlatform), [entries, comparisonStart, comparisonEnd, analyticsPlatform]);
   const analyticsBuckets = useMemo(() => {
     if (!analyticsDuration) return [];
-    const bucketSize = analyticsDuration > 45 ? Math.ceil(analyticsDuration / 24) : 1;
+    const bucketSize = analyticsDuration <= 14 ? 1 : analyticsDuration <= 60 ? 7 : 30;
     const buckets: { label: string; current: number; previous: number }[] = [];
     for (let offset = 0; offset < analyticsDuration; offset += bucketSize) {
       const currentStart = addDays(analyticsStart, offset);
@@ -363,7 +378,9 @@ export default function Home() {
       const previousStart = addDays(comparisonStart, offset);
       const previousEnd = addDays(previousStart, inclusiveDays(currentStart, currentEnd) - 1);
       buckets.push({
-        label: new Date(`${currentStart}T00:00:00`).toLocaleDateString('en', { month: 'short', day: 'numeric' }),
+        label: bucketSize === 1
+          ? new Date(`${currentStart}T00:00:00`).toLocaleDateString('en', { month: 'short', day: 'numeric' })
+          : `${new Date(`${currentStart}T00:00:00`).toLocaleDateString('en', { month: 'short', day: 'numeric' })}–${new Date(`${currentEnd}T00:00:00`).toLocaleDateString('en', { day: 'numeric' })}`,
         current: analyticsMetricValue(aggregateAnalytics(entries, currentStart, currentEnd, analyticsPlatform), analyticsMetric),
         previous: analyticsMetricValue(aggregateAnalytics(entries, previousStart, previousEnd, analyticsPlatform), analyticsMetric),
       });
@@ -371,6 +388,19 @@ export default function Home() {
     return buckets;
   }, [entries, analyticsStart, analyticsEnd, analyticsPlatform, analyticsMetric, analyticsDuration, comparisonStart]);
   const analyticsChartMax = Math.max(1, ...analyticsBuckets.flatMap((bucket) => [bucket.current, compareAnalytics ? bucket.previous : 0]));
+  const chartWidth = 1000;
+  const chartHeight = 280;
+  const chartPadding = 28;
+  const currentChartPoints = chartPoints(analyticsBuckets.map((bucket) => bucket.current), analyticsChartMax, chartWidth, chartHeight, chartPadding);
+  const previousChartPoints = chartPoints(analyticsBuckets.map((bucket) => bucket.previous), analyticsChartMax, chartWidth, chartHeight, chartPadding);
+  const currentChartPath = smoothChartPath(currentChartPoints);
+  const previousChartPath = smoothChartPath(previousChartPoints);
+  const currentAreaPath = currentChartPoints.length ? `${currentChartPath} L ${currentChartPoints.at(-1)?.x} ${chartHeight - chartPadding} L ${currentChartPoints[0].x} ${chartHeight - chartPadding} Z` : '';
+  const currentValues = analyticsBuckets.map((bucket) => bucket.current);
+  const chartPeak = Math.max(0, ...currentValues);
+  const chartMedian = median(currentValues.filter((value) => value > 0));
+  const viralSpikeIndex = chartPeak > 0 && chartPeak >= Math.max(chartMedian * 2, 1) ? currentValues.indexOf(chartPeak) : -1;
+  const chartTickValue = (ratio: number) => analyticsMetric === 'engagementRate' ? `${(analyticsChartMax * ratio).toFixed(1)}%` : new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(analyticsChartMax * ratio);
   const analyticsRangeEntries = useMemo(() => entries.filter((entry) => entry.date >= analyticsStart && entry.date <= analyticsEnd && (analyticsPlatform === 'all' || entry.platforms.includes(analyticsPlatform))), [entries, analyticsStart, analyticsEnd, analyticsPlatform]);
   const topContents = useMemo(() => analyticsRangeEntries.map((entry) => {
     const selectedPlatforms = entry.platforms.filter((platform) => analyticsPlatform === 'all' || platform === analyticsPlatform);
@@ -755,7 +785,7 @@ export default function Home() {
         })}</div>
         <div className="analytics-chart-card">
           <div className="chart-head"><div><span>{analyticsMetricLabel} trend</span><small>{analyticsStart} – {analyticsEnd}{compareAnalytics ? ` · compared with ${comparisonStart} – ${comparisonEnd}` : ''}</small></div><select aria-label="Chart metric" value={analyticsMetric} onChange={(event) => setAnalyticsMetric(event.target.value as AnalyticsMetric)}><option value="views">Views</option><option value="interactions">Interactions</option><option value="follows">Follows</option><option value="engagementRate">Engagement rate</option></select></div>
-          {analyticsBuckets.length ? <><div className="chart-legend"><span className="current">Current period</span>{compareAnalytics && <span className="previous">Previous period</span>}</div><div className="bar-chart">{analyticsBuckets.map((bucket, index) => <div className="bar-column" key={`${bucket.label}-${index}`} title={`${bucket.label}: ${bucket.current.toLocaleString()}${compareAnalytics ? ` · previous ${bucket.previous.toLocaleString()}` : ''}`}><div className="bar-pair">{compareAnalytics && <i className="previous-bar" style={{ height: `${Math.max(bucket.previous ? 3 : 0, (bucket.previous / analyticsChartMax) * 100)}%` }} />}<i className="current-bar" style={{ height: `${Math.max(bucket.current ? 3 : 0, (bucket.current / analyticsChartMax) * 100)}%` }} /></div><span>{index % Math.max(1, Math.ceil(analyticsBuckets.length / 7)) === 0 ? bucket.label : ''}</span></div>)}</div></> : <div className="analytics-empty">Choose a valid date range to see your chart.</div>}
+          {analyticsBuckets.length ? <><div className="chart-legend"><span className="current">Current period</span>{compareAnalytics && <span className="previous">Previous period</span>}{viralSpikeIndex >= 0 && <span className="spike">Viral spike</span>}</div><div className="line-chart-stage"><div className="line-y-axis">{[1,.75,.5,.25,0].map((ratio) => <span key={ratio}>{chartTickValue(ratio)}</span>)}</div><div className="line-chart-main"><svg className="line-chart" viewBox={`0 0 ${chartWidth} ${chartHeight}`} role="img" aria-label={`${analyticsMetricLabel} trend chart`} preserveAspectRatio="none"><defs><linearGradient id="insightsLine" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stopColor="#ff8a00"/><stop offset=".52" stopColor="#ff3e5f"/><stop offset="1" stopColor="#b622dc"/></linearGradient><linearGradient id="insightsArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#ed3c86" stopOpacity=".22"/><stop offset="1" stopColor="#b622dc" stopOpacity=".015"/></linearGradient></defs>{[0,.25,.5,.75,1].map((ratio) => <line className="line-grid" key={ratio} x1={chartPadding} x2={chartWidth - chartPadding} y1={chartPadding + ratio * (chartHeight - chartPadding * 2)} y2={chartPadding + ratio * (chartHeight - chartPadding * 2)} />)}{currentAreaPath && <path className="line-area" d={currentAreaPath} />}{compareAnalytics && previousChartPath && <path className="line-series previous" d={previousChartPath} />}{currentChartPath && <path className="line-series current" d={currentChartPath} />}{compareAnalytics && previousChartPoints.map((point, index) => <circle className="line-point previous" key={`previous-${index}`} cx={point.x} cy={point.y} r="4"><title>{`${analyticsBuckets[index].label} previous: ${analyticsMetric === 'engagementRate' ? `${point.value.toFixed(1)}%` : point.value.toLocaleString()}`}</title></circle>)}{currentChartPoints.map((point, index) => <g key={`current-${index}`}><circle className="line-point current" cx={point.x} cy={point.y} r={index === viralSpikeIndex ? 6 : 5}><title>{`${analyticsBuckets[index].label}: ${analyticsMetric === 'engagementRate' ? `${point.value.toFixed(1)}%` : point.value.toLocaleString()}`}</title></circle>{index === viralSpikeIndex && <g className="spike-marker"><circle cx={point.x} cy={point.y} r="13"/><rect x={Math.min(chartWidth - 105, Math.max(5, point.x - 44))} y={Math.max(4, point.y - 35)} width="88" height="21" rx="10"/><text x={Math.min(chartWidth - 61, Math.max(49, point.x))} y={Math.max(18, point.y - 21)} textAnchor="middle">Viral spike</text></g>}</g>)}</svg><div className="line-x-axis" style={{ gridTemplateColumns: `repeat(${analyticsBuckets.length}, minmax(0, 1fr))` }}>{analyticsBuckets.map((bucket) => <span key={bucket.label}>{bucket.label}</span>)}</div></div></div></> : <div className="analytics-empty">Choose a valid date range to see your chart.</div>}
         </div>
         <div className="analytics-breakdown"><div><span>Likes</span><strong>{compactNumber.format(analyticsTotals.likes)}</strong></div><div><span>Shares</span><strong>{compactNumber.format(analyticsTotals.shares)}</strong></div><div><span>Saves</span><strong>{compactNumber.format(analyticsTotals.saves)}</strong></div><div><span>Follows</span><strong>{compactNumber.format(analyticsTotals.follows)}</strong></div></div>
         <section className="top-content-section">
