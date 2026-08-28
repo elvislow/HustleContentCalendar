@@ -346,7 +346,7 @@ button { color: inherit; }
 .team-list-head { display: flex; justify-content: space-between; padding: 13px 15px; background: #faf6fb; border-bottom: 1px solid var(--line); }
 .team-list-head span { font-size: 11px; font-weight: 900; }
 .team-list-head small { color: var(--muted); font-size: 9px; }
-.team-row { display: grid; grid-template-columns: 36px minmax(190px, 1fr) 120px 82px; gap: 11px; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.team-row { display: grid; grid-template-columns: 36px minmax(190px, 1fr) 120px 150px; gap: 11px; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--line); }
 .team-row:last-child { border-bottom: 0; }
 .team-row.inactive { opacity: .55; }
 .member-avatar { width: 34px; height: 34px; display: grid; place-items: center; color: #fff; background: var(--gradient); border-radius: 11px; font-size: 12px; font-weight: 900; }
@@ -356,6 +356,10 @@ button { color: inherit; }
 .member-info small { color: var(--muted); font-size: 9px; }
 .remove-member { border: 0; background: none; color: #bd4967; cursor: pointer; font-size: 9px; font-weight: 900; }
 .remove-member:disabled { color: #b7aebc; cursor: default; }
+.member-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.reset-member-password { border: 1px solid #e1d2e8; border-radius: 9px; background: #fff; color: #735184; cursor: pointer; padding: 7px 8px; font-size: 8px; font-weight: 900; white-space: nowrap; }
+.reset-member-password:hover { border-color: #c8a9d8; background: #fbf6fd; }
+.password-reset-backdrop { z-index: 80; background: #17081fd9; }
 
 .app-shell[data-brand="second-studio"] {
   --ink: #171715;
@@ -430,7 +434,7 @@ button { color: inherit; }
   .invite-form { grid-template-columns: 1fr 120px; }
   .invite-form .primary-button { grid-column: 1 / -1; }
   .team-row { grid-template-columns: 36px minmax(140px, 1fr) 105px; }
-  .team-row .remove-member { grid-column: 2 / -1; justify-self: end; }
+  .team-row .member-actions { grid-column: 2 / -1; justify-self: end; }
 }
 
 @media (max-width: 560px) {
@@ -507,5 +511,5 @@ button { color: inherit; }
   .team-panel { padding: 20px; }
   .team-row { grid-template-columns: 34px 1fr; }
   .team-row select { grid-column: 2; }
-  .team-row .remove-member { grid-column: 2; }
+  .team-row .member-actions { grid-column: 2; justify-self: stretch; justify-content: flex-end; }
 }

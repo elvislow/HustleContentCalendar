@@ -24,6 +24,18 @@ Sign in with that email and temporary password. The first approved admin is `elv
 
 This flow does not send login emails and is not affected by Supabase email rate limits.
 
+## Enable Admin password resets
+
+The Admin settings page can reset the password of any connected team member. The operation is performed by a protected server route and re-checks the signed-in user's active Admin role before changing anything.
+
+1. In Supabase, open **Project Settings → API Keys**.
+2. Create or copy a server-side **Secret key** (`sb_secret_...`). A legacy `service_role` key also works.
+3. In Vercel, open the project → **Settings → Environment Variables**.
+4. Add `SUPABASE_SECRET_KEY` with the secret key as its value for Production, Preview and Development.
+5. Redeploy the project.
+
+Never paste this secret into source code, GitHub, browser code, chat or screenshots. After deployment, an Admin can open **Admin settings → Reset password** beside a connected member.
+
 ## Deploy
 
 Upload the contents of this folder to the root of your GitHub repository. Vercel can deploy it with the default Next.js settings.

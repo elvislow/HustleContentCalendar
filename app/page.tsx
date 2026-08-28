@@ -165,6 +165,12 @@ export default function Home() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<Role>('editor');
   const [teamError, setTeamError] = useState('');
+  const [teamMessage, setTeamMessage] = useState('');
+  const [resetMember, setResetMember] = useState<Member | null>(null);
+  const [adminPassword, setAdminPassword] = useState('');
+  const [adminPasswordConfirm, setAdminPasswordConfirm] = useState('');
+  const [resetPasswordBusy, setResetPasswordBusy] = useState(false);
+  const [resetPasswordError, setResetPasswordError] = useState('');
   const [month, setMonth] = useState(() => { const now = new Date(); return new Date(now.getFullYear(), now.getMonth(), 1); });
 
   useEffect(() => {
@@ -406,6 +412,44 @@ export default function Home() {
     if (result.error) setTeamError(result.error.message);
     else await refreshTeam();
   }
+  function openAdminPasswordReset(target: Member) {
+    setResetMember(target);
+    setAdminPassword('');
+    setAdminPasswordConfirm('');
+    setResetPasswordError('');
+  }
+  async function resetTeamMemberPassword(event: FormEvent) {
+    event.preventDefault();
+    if (member?.role !== 'admin' || !resetMember) return;
+    setResetPasswordError('');
+    if (adminPassword.length < 8) { setResetPasswordError('Use at least 8 characters.'); return; }
+    if (adminPassword !== adminPasswordConfirm) { setResetPasswordError('The passwords do not match.'); return; }
+    setResetPasswordBusy(true);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    if (!accessToken) {
+      setResetPasswordBusy(false);
+      setResetPasswordError('Your session has expired. Please sign in again.');
+      return;
+    }
+    try {
+      const response = await fetch('/api/admin/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({ userId: resetMember.id, password: adminPassword }),
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) { setResetPasswordError(result.error || 'Unable to reset password.'); return; }
+      setTeamMessage(`Password updated for ${resetMember.email}. Share it securely.`);
+      setResetMember(null);
+      setAdminPassword('');
+      setAdminPasswordConfirm('');
+    } catch {
+      setResetPasswordError('Unable to reach the server. Please try again.');
+    } finally {
+      setResetPasswordBusy(false);
+    }
+  }
   function togglePlatform(platform: Platform) {
     const included = draft.platforms.includes(platform);
     const nextPlatforms = included ? draft.platforms.filter((item) => item !== platform) : [...draft.platforms, platform];
@@ -564,11 +608,17 @@ export default function Home() {
       <form className="invite-form" onSubmit={addTeamMember}><label className="field"><span>Email address</span><input type="email" required placeholder="name@company.com" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} /></label><label className="field"><span>Role</span><select value={inviteRole} onChange={(event) => setInviteRole(event.target.value as Role)}><option value="editor">Editor</option><option value="viewer">Viewer</option><option value="admin">Admin</option></select></label><button className="primary-button" type="submit">Add access</button></form>
       <div className="admin-account-note"><span>1</span><p><strong>Approve the email here.</strong><small>Then create the same email with a temporary password in Supabase → Authentication → Users → Add user. Turn on Auto Confirm User.</small></p></div>
       {teamError && <p className="team-error">{teamError}</p>}
+      {teamMessage && <p className="account-success">{teamMessage}</p>}
       <div className="role-guide"><span><b>Admin</b> manages people and content</span><span><b>Editor</b> updates content</span><span><b>Viewer</b> reads only</span></div>
       <div className="team-list"><div className="team-list-head"><span>People with access</span><small>{members.filter((item) => item.status === 'active').length + invites.filter((invite) => invite.status === 'active' && !members.some((item) => item.email === invite.email)).length} active</small></div>
-        {members.map((item) => <article className={`team-row ${item.status}`} key={item.id}><div className="member-avatar">{item.email.slice(0, 1).toUpperCase()}</div><div className="member-info"><strong>{item.email}</strong><small>{item.id === authUser?.id ? 'You · Signed in' : item.status === 'active' ? 'Account connected' : 'Access inactive'}</small></div><select aria-label={`Role for ${item.email}`} value={item.role} disabled={item.id === authUser?.id && item.email === initialAdminEmail} onChange={(event) => void updateTeamRole('member', item.id, event.target.value as Role)}><option value="admin">Admin</option><option value="editor">Editor</option><option value="viewer">Viewer</option></select><button className="remove-member" type="button" disabled={item.id === authUser?.id} onClick={() => void removeTeamAccess('member', item.id)}>{item.status === 'active' ? 'Deactivate' : 'Inactive'}</button></article>)}
+        {members.map((item) => <article className={`team-row ${item.status}`} key={item.id}><div className="member-avatar">{item.email.slice(0, 1).toUpperCase()}</div><div className="member-info"><strong>{item.email}</strong><small>{item.id === authUser?.id ? 'You · Signed in' : item.status === 'active' ? 'Account connected' : 'Access inactive'}</small></div><select aria-label={`Role for ${item.email}`} value={item.role} disabled={item.id === authUser?.id && item.email === initialAdminEmail} onChange={(event) => void updateTeamRole('member', item.id, event.target.value as Role)}><option value="admin">Admin</option><option value="editor">Editor</option><option value="viewer">Viewer</option></select><div className="member-actions">{item.status === 'active' && item.id !== authUser?.id && <button className="reset-member-password" type="button" onClick={() => openAdminPasswordReset(item)}>Reset password</button>}<button className="remove-member" type="button" disabled={item.id === authUser?.id} onClick={() => void removeTeamAccess('member', item.id)}>{item.status === 'active' ? 'Deactivate' : 'Inactive'}</button></div></article>)}
         {invites.filter((invite) => !members.some((item) => item.email === invite.email)).map((invite) => <article className="team-row pending" key={invite.email}><div className="member-avatar">{invite.email.slice(0, 1).toUpperCase()}</div><div className="member-info"><strong>{invite.email}</strong><small>Approved · Waiting for first login</small></div><select aria-label={`Role for ${invite.email}`} value={invite.role} onChange={(event) => void updateTeamRole('invite', invite.email, event.target.value as Role)}><option value="admin">Admin</option><option value="editor">Editor</option><option value="viewer">Viewer</option></select><button className="remove-member" type="button" onClick={() => void removeTeamAccess('invite', invite.email)}>Remove</button></article>)}
       </div>
+    </section></div>}
+
+    {resetMember && member?.role === 'admin' && <div className="modal-backdrop password-reset-backdrop" onMouseDown={() => !resetPasswordBusy && setResetMember(null)}><section className="account-panel" onMouseDown={(event) => event.stopPropagation()}>
+      <div className="editor-head"><div><p className="eyebrow">ADMIN PASSWORD RESET</p><h2>Set a new password</h2><span className="team-subtitle">For {resetMember.email}</span></div><button type="button" className="close" disabled={resetPasswordBusy} onClick={() => setResetMember(null)}>×</button></div>
+      <form className="password-form" onSubmit={(event) => void resetTeamMemberPassword(event)}><div className="account-note"><span>✦</span><p><strong>Create a temporary password</strong><small>The member can change it from their account menu after signing in.</small></p></div><label className="field"><span>New password</span><input type="password" minLength={8} maxLength={72} autoComplete="new-password" required value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} /></label><label className="field"><span>Confirm new password</span><input type="password" minLength={8} maxLength={72} autoComplete="new-password" required value={adminPasswordConfirm} onChange={(event) => setAdminPasswordConfirm(event.target.value)} /></label>{resetPasswordError && <p className="team-error">{resetPasswordError}</p>}<div className="account-actions"><button type="button" className="secondary-button" disabled={resetPasswordBusy} onClick={() => setResetMember(null)}>Cancel</button><button type="submit" className="primary-button" disabled={resetPasswordBusy}>{resetPasswordBusy ? 'Updating…' : 'Update password'}</button></div></form>
     </section></div>}
   </main>;
 }
