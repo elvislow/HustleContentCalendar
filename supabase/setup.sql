@@ -37,9 +37,55 @@ create table if not exists public.content_entries (
 create index if not exists content_entries_brand_date_idx
   on public.content_entries (brand, publish_date);
 
+create table if not exists public.audience_monthly (
+  id uuid primary key default gen_random_uuid(),
+  brand text not null check (brand in ('hustle', 'second-studio')),
+  platform text not null check (platform in ('IG', 'YouTube', 'Lemon8', 'TikTok')),
+  month_key date not null,
+  starting_followers bigint not null default 0 check (starting_followers >= 0),
+  ending_followers bigint not null default 0 check (ending_followers >= 0),
+  reach bigint not null default 0 check (reach >= 0),
+  profile_visits bigint not null default 0 check (profile_visits >= 0),
+  link_clicks bigint not null default 0 check (link_clicks >= 0),
+  non_follower_reach_pct numeric(5,2) not null default 0 check (non_follower_reach_pct between 0 and 100),
+  women_pct numeric(5,2) not null default 0 check (women_pct between 0 and 100),
+  men_pct numeric(5,2) not null default 0 check (men_pct between 0 and 100),
+  primary_age text not null default '',
+  top_locations text not null default '',
+  active_day text not null default '',
+  active_time text not null default '',
+  notes text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  updated_by uuid references auth.users(id),
+  unique (brand, platform, month_key)
+);
+
+create index if not exists audience_monthly_brand_month_idx
+  on public.audience_monthly (brand, month_key);
+
+create table if not exists public.audience_weekly (
+  id uuid primary key default gen_random_uuid(),
+  brand text not null check (brand in ('hustle', 'second-studio')),
+  platform text not null check (platform in ('IG', 'YouTube', 'Lemon8', 'TikTok')),
+  month_key date not null,
+  week_index integer not null check (week_index between 1 and 5),
+  total_follows bigint not null default 0 check (total_follows >= 0),
+  unfollows bigint not null default 0 check (unfollows >= 0),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  updated_by uuid references auth.users(id),
+  unique (brand, platform, month_key, week_index)
+);
+
+create index if not exists audience_weekly_brand_month_idx
+  on public.audience_weekly (brand, month_key, platform);
+
 alter table public.members enable row level security;
 alter table public.invites enable row level security;
 alter table public.content_entries enable row level security;
+alter table public.audience_monthly enable row level security;
+alter table public.audience_weekly enable row level security;
 
 create or replace function public.current_member_role()
 returns text
@@ -164,10 +210,46 @@ drop policy if exists "entries editor delete" on public.content_entries;
 create policy "entries editor delete" on public.content_entries for delete to authenticated
 using (public.current_member_role() in ('admin', 'editor'));
 
+drop policy if exists "audience member read" on public.audience_monthly;
+create policy "audience member read" on public.audience_monthly for select to authenticated
+using (public.current_member_role() in ('admin', 'editor', 'viewer'));
+
+drop policy if exists "audience editor create" on public.audience_monthly;
+create policy "audience editor create" on public.audience_monthly for insert to authenticated
+with check (public.current_member_role() in ('admin', 'editor') and updated_by = auth.uid());
+
+drop policy if exists "audience editor update" on public.audience_monthly;
+create policy "audience editor update" on public.audience_monthly for update to authenticated
+using (public.current_member_role() in ('admin', 'editor'))
+with check (public.current_member_role() in ('admin', 'editor') and updated_by = auth.uid());
+
+drop policy if exists "audience editor delete" on public.audience_monthly;
+create policy "audience editor delete" on public.audience_monthly for delete to authenticated
+using (public.current_member_role() in ('admin', 'editor'));
+
+drop policy if exists "weekly audience member read" on public.audience_weekly;
+create policy "weekly audience member read" on public.audience_weekly for select to authenticated
+using (public.current_member_role() in ('admin', 'editor', 'viewer'));
+
+drop policy if exists "weekly audience editor create" on public.audience_weekly;
+create policy "weekly audience editor create" on public.audience_weekly for insert to authenticated
+with check (public.current_member_role() in ('admin', 'editor') and updated_by = auth.uid());
+
+drop policy if exists "weekly audience editor update" on public.audience_weekly;
+create policy "weekly audience editor update" on public.audience_weekly for update to authenticated
+using (public.current_member_role() in ('admin', 'editor'))
+with check (public.current_member_role() in ('admin', 'editor') and updated_by = auth.uid());
+
+drop policy if exists "weekly audience editor delete" on public.audience_weekly;
+create policy "weekly audience editor delete" on public.audience_weekly for delete to authenticated
+using (public.current_member_role() in ('admin', 'editor'));
+
 grant usage on schema public to authenticated;
 grant select, update, delete on public.members to authenticated;
 grant select, insert, update, delete on public.invites to authenticated;
 grant select, insert, update, delete on public.content_entries to authenticated;
+grant select, insert, update, delete on public.audience_monthly to authenticated;
+grant select, insert, update, delete on public.audience_weekly to authenticated;
 revoke execute on function public.bootstrap_member() from public, anon;
 revoke execute on function public.current_member_role() from public, anon;
 grant execute on function public.bootstrap_member() to authenticated;
@@ -175,6 +257,8 @@ grant execute on function public.current_member_role() to authenticated;
 
 -- Include the deleted row's brand so filtered realtime listeners also receive deletes.
 alter table public.content_entries replica identity full;
+alter table public.audience_monthly replica identity full;
+alter table public.audience_weekly replica identity full;
 
 do $$
 begin
@@ -183,5 +267,25 @@ begin
     where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'content_entries'
   ) then
     alter publication supabase_realtime add table public.content_entries;
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'audience_weekly'
+  ) then
+    alter publication supabase_realtime add table public.audience_weekly;
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'audience_monthly'
+  ) then
+    alter publication supabase_realtime add table public.audience_monthly;
   end if;
 end $$;
