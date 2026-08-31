@@ -177,10 +177,14 @@ button { color: inherit; }
 .analytics-kpi > small i { color: var(--muted); font-style: normal; font-weight: 650; }
 .analytics-kpi:nth-child(4) > small i { color: #ffffffb5; }
 .platform-momentum-card { margin-top: 14px; padding: 20px; border: 1px solid var(--line); border-radius: 23px; background: #ffffffdd; box-shadow: 0 20px 55px #71356810; }
+.platform-analysis-tabs { width: fit-content; display: flex; gap: 4px; margin-bottom: 16px; padding: 4px; border: 1px solid var(--line); border-radius: 13px; background: #faf6fb; }
+.platform-analysis-tabs button { border: 0; border-radius: 9px; padding: 8px 12px; background: transparent; color: var(--muted); cursor: pointer; font-size: 8px; font-weight: 900; }
+.platform-analysis-tabs button.active { color: #fff; background: var(--gradient); box-shadow: 0 6px 14px #ad3f9c26; }
 .chart-head .momentum-controls { flex-direction: row; align-items: center; gap: 8px; }
 .momentum-mode { display: flex; gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: 11px; background: #faf6fb; }
 .momentum-mode button { border: 0; border-radius: 8px; padding: 7px 9px; background: transparent; color: var(--muted); cursor: pointer; font-size: 8px; font-weight: 900; white-space: nowrap; }
 .momentum-mode button.active { color: #fff; background: var(--gradient); box-shadow: 0 5px 12px #ad3f9c24; }
+.opportunity-mode { padding: 8px 10px; border: 1px solid #dfd4e4; border-radius: 10px; color: #7f6d89; background: #f7f2f8; font-size: 8px !important; font-weight: 900; white-space: nowrap; }
 .momentum-axis { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin: 17px 122px 5px 130px; color: #9a8aa2; font-size: 7px; font-weight: 850; text-transform: uppercase; letter-spacing: .08em; }
 .momentum-axis span:last-child { text-align: right; }
 .momentum-axis i { min-width: 45px; text-align: center; font-style: normal; }
@@ -205,6 +209,50 @@ button { color: inherit; }
 .momentum-change.negative strong { color: #c94862; }
 .momentum-change.neutral strong { color: var(--muted); }
 .momentum-arrow { color: #aa96b3; text-align: right; font-size: 18px; font-style: normal; }
+.opportunity-section { margin-top: 15px; }
+.opportunity-key { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 9px; color: var(--muted); font-size: 7px; font-weight: 800; }
+.opportunity-key > span { display: flex; align-items: center; gap: 5px; }
+.opportunity-key i { width: 8px; height: 8px; border-radius: 50%; }
+.opportunity-key i.scale { background: #9e36d3; }
+.opportunity-key i.protect { background: #d7479d; }
+.opportunity-key i.test { background: #e98a4e; }
+.opportunity-key i.fix { background: #c75b69; }
+.opportunity-key small { margin-left: 5px; color: #a08fa8; font-size: 7px; }
+.opportunity-map { position: relative; height: 430px; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: #fff; }
+.opportunity-quadrant { padding: 17px 18px; pointer-events: none; }
+.opportunity-quadrant strong { display: block; font-size: 9px; letter-spacing: .12em; }
+.opportunity-quadrant small { display: block; margin-top: 3px; color: #9a8ba2; font-size: 7px; }
+.opportunity-quadrant.protect { color: #a43d78; background: linear-gradient(135deg, #fff8fb, #fff1f7); }
+.opportunity-quadrant.scale { color: #8033ac; text-align: right; background: linear-gradient(225deg, #f8f1fb, #fdf9ff); }
+.opportunity-quadrant.fix { align-content: end; color: #ad4e5b; background: linear-gradient(45deg, #fff5f5, #fffafa); }
+.opportunity-quadrant.test { align-content: end; color: #b66a31; text-align: right; background: linear-gradient(315deg, #fff8ef, #fffdf9); }
+.opportunity-x-axis, .opportunity-y-axis { position: absolute; z-index: 1; background: #cdbfd4; pointer-events: none; }
+.opportunity-x-axis { top: 50%; right: 0; left: 0; height: 1px; }
+.opportunity-y-axis { top: 0; bottom: 0; left: 50%; width: 1px; }
+.opportunity-axis-label { position: absolute; z-index: 2; padding: 3px 6px; border-radius: 99px; color: #8f7f97; background: #ffffffd9; font-size: 6px; font-weight: 900; text-transform: uppercase; letter-spacing: .07em; pointer-events: none; }
+.opportunity-axis-label.top { top: 6px; left: 50%; transform: translateX(-50%); }
+.opportunity-axis-label.bottom { bottom: 6px; left: 50%; transform: translateX(-50%); }
+.opportunity-axis-label.left { top: 50%; left: 6px; transform: translateY(-50%); }
+.opportunity-axis-label.right { top: 50%; right: 6px; transform: translateY(-50%); }
+.opportunity-bubble { position: absolute; z-index: 3; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 1px; transform: translate(-50%, -50%); border: 3px solid #fff; border-radius: 50%; color: #fff; cursor: pointer; text-align: center; box-shadow: 0 8px 21px #48214c32; transition: transform .2s, box-shadow .2s; }
+.opportunity-bubble:hover { z-index: 5; transform: translate(-50%, -50%) scale(1.08); box-shadow: 0 11px 25px #48214c48; }
+.opportunity-bubble.scale { background: linear-gradient(135deg, #c946a7, #8e32c4); }
+.opportunity-bubble.protect { background: linear-gradient(135deg, #ee6d9f, #bd397d); }
+.opportunity-bubble.test { background: linear-gradient(135deg, #f0a04f, #dc6a51); }
+.opportunity-bubble.fix { background: linear-gradient(135deg, #df7c7c, #b94960); }
+.opportunity-bubble.low-confidence { border-style: dashed; opacity: .78; }
+.opportunity-bubble strong { max-width: 90%; overflow: hidden; text-overflow: ellipsis; font-size: 8px; white-space: nowrap; }
+.opportunity-bubble small, .opportunity-bubble em { color: #ffffffd9; font-size: 6px; font-style: normal; line-height: 1.1; }
+.opportunity-bubble > i { position: absolute; top: calc(100% + 3px); left: 50%; transform: translateX(-50%); color: #a2682e; font-size: 6px; font-style: normal; font-weight: 900; white-space: nowrap; }
+.opportunity-foot { display: flex; justify-content: space-between; gap: 12px; padding: 8px 3px 0; color: #96869f; font-size: 7px; }
+.opportunity-foot b { color: #705d7a; }
+.opportunity-unavailable { margin-top: 13px; overflow: hidden; border: 1px dashed #dbcce2; border-radius: 15px; }
+.opportunity-unavailable > strong { display: block; padding: 9px 12px 7px; color: #8b7895; font-size: 8px; }
+.opportunity-unavailable button { width: 100%; display: grid; grid-template-columns: 85px 1fr 12px; gap: 10px; align-items: center; padding: 9px 12px; border: 0; border-top: 1px solid #eee5f1; background: #fcf9fd; color: var(--ink); text-align: left; cursor: pointer; }
+.opportunity-unavailable button:hover { background: #fff4fa; }
+.opportunity-unavailable button span { font-size: 9px; font-weight: 900; }
+.opportunity-unavailable button small { color: var(--muted); font-size: 7px; }
+.opportunity-unavailable button i { color: #a590af; font-style: normal; }
 .analytics-chart-card { margin-top: 14px; padding: 20px; border: 1px solid var(--line); border-radius: 23px; background: #ffffffdd; box-shadow: 0 20px 55px #71356810; }
 .chart-head { display: flex; justify-content: space-between; align-items: center; gap: 15px; }
 .chart-head > div { display: flex; flex-direction: column; gap: 4px; }
@@ -635,6 +683,8 @@ button { color: inherit; }
   .analytics-kpi { min-height: 112px; }
   .analytics-chart-card { padding: 15px 12px; }
   .platform-momentum-card { padding: 15px 12px; }
+  .platform-analysis-tabs { width: 100%; }
+  .platform-analysis-tabs button { flex: 1; padding-right: 7px; padding-left: 7px; }
   .chart-head .momentum-controls { width: 100%; align-items: stretch; flex-direction: column; }
   .momentum-mode { width: 100%; }
   .momentum-mode button { flex: 1; }
@@ -644,6 +694,12 @@ button { color: inherit; }
   .momentum-platform small { line-height: 1.35; }
   .momentum-track { height: 22px; }
   .momentum-track b { top: 4px; height: 14px; }
+  .opportunity-key { justify-content: flex-start; }
+  .opportunity-key small { width: 100%; margin-left: 0; }
+  .opportunity-map { height: 390px; }
+  .opportunity-quadrant { padding: 13px 10px; }
+  .opportunity-foot { align-items: flex-start; flex-direction: column; }
+  .opportunity-unavailable button { grid-template-columns: 62px 1fr 10px; }
   .chart-head { align-items: flex-start; flex-direction: column; }
   .chart-head select { width: 100%; }
   .line-chart-stage { grid-template-columns: 38px minmax(0, 1fr); gap: 5px; }

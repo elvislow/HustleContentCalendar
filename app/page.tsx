@@ -18,6 +18,7 @@ type Entry = {
 type StatusKey = 'idea' | 'editing' | 'ready' | 'published';
 type AnalyticsMetric = 'views' | 'interactions' | 'follows' | 'engagementRate';
 type AnalyticsMode = 'total' | 'perPost';
+type PlatformAnalysisView = 'momentum' | 'opportunity';
 type AnalyticsTotals = { posts: number; views: number; likes: number; shares: number; saves: number; follows: number; interactions: number; engagementRate: number };
 type AudienceSnapshot = {
   id?: string; month: string; platform: Platform; startingFollowers: number; endingFollowers: number;
@@ -102,6 +103,16 @@ function aggregateAnalytics(entries: Entry[], start: string, end: string, platfo
 }
 
 const analyticsMetricValue = (totals: AnalyticsTotals, metric: AnalyticsMetric) => totals[metric];
+const platformMetricSamples = (entries: Entry[], start: string, end: string, platform: Platform, metric: AnalyticsMetric) => entries
+  .filter((entry) => entry.date >= start && entry.date <= end && entry.platforms.includes(platform) && Boolean(entry.platformData[platform].postUrl))
+  .map((entry) => {
+    const data = entry.platformData[platform];
+    if (metric === 'views') return data.views;
+    if (metric === 'interactions') return data.likes + data.shares + data.saves;
+    if (metric === 'follows') return data.follows;
+    return insightRate(data);
+  });
+const average = (values: number[]) => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
 const changeValue = (current: number, previous: number) => previous === 0 ? null : ((current - previous) / previous) * 100;
 type ChartPoint = { x: number; y: number; value: number };
 const chartPoints = (values: number[], maximum: number, width: number, height: number, padding: number): ChartPoint[] => values.map((value, index) => ({
@@ -202,6 +213,7 @@ export default function Home() {
   const [analyticsPlatform, setAnalyticsPlatform] = useState<'all' | Platform>('all');
   const [analyticsMetric, setAnalyticsMetric] = useState<AnalyticsMetric>('views');
   const [analyticsMode, setAnalyticsMode] = useState<AnalyticsMode>('perPost');
+  const [platformAnalysisView, setPlatformAnalysisView] = useState<PlatformAnalysisView>('momentum');
   const [analyticsPreset, setAnalyticsPreset] = useState<'last7' | 'last30' | 'custom'>('last7');
   const [analyticsEnd, setAnalyticsEnd] = useState(today);
   const [analyticsStart, setAnalyticsStart] = useState(() => addDays(today(), -6));
@@ -389,6 +401,43 @@ export default function Home() {
   }).sort((a, b) => b.delta - a.delta), [entries, analyticsStart, analyticsEnd, comparisonStart, comparisonEnd, analyticsMetric, analyticsMode]);
   const platformMomentumMax = Math.max(1, ...platformMomentum.map((item) => Math.abs(item.delta)));
   const platformStableThreshold = analyticsMetric === 'engagementRate' ? .5 : 5;
+  const opportunityBaselineStart = addDays(analyticsStart, -90);
+  const opportunityBaselineEnd = addDays(analyticsStart, -1);
+  const opportunityPlatforms = useMemo(() => platforms.map((platform) => {
+    const currentSamples = platformMetricSamples(entries, analyticsStart, analyticsEnd, platform, analyticsMetric);
+    const previousSamples = platformMetricSamples(entries, comparisonStart, comparisonEnd, platform, analyticsMetric);
+    const recentBaselineSamples = platformMetricSamples(entries, opportunityBaselineStart, opportunityBaselineEnd, platform, analyticsMetric);
+    const historicalSamples = entries
+      .filter((entry) => entry.date < analyticsStart && entry.platforms.includes(platform) && Boolean(entry.platformData[platform].postUrl))
+      .map((entry) => {
+        const data = entry.platformData[platform];
+        if (analyticsMetric === 'views') return data.views;
+        if (analyticsMetric === 'interactions') return data.likes + data.shares + data.saves;
+        if (analyticsMetric === 'follows') return data.follows;
+        return insightRate(data);
+      });
+    const baselineSamples = recentBaselineSamples.length >= 6 ? recentBaselineSamples : historicalSamples;
+    const current = average(currentSamples);
+    const previous = average(previousSamples);
+    const baselineMedian = median(baselineSamples);
+    const baseline = baselineMedian > 0 ? baselineMedian : average(baselineSamples);
+    const momentum = analyticsMetric === 'engagementRate'
+      ? current - previous
+      : previous > 0 ? ((current - previous) / previous) * 100 : 0;
+    const performanceIndex = baseline > 0 ? (current / baseline) * 100 : 0;
+    const contribution = analyticsMetric === 'engagementRate' ? currentSamples.length : currentSamples.reduce((sum, value) => sum + value, 0);
+    const isNew = current > 0 && previous === 0;
+    const hasCoordinates = currentSamples.length > 0 && previous > 0 && baseline > 0;
+    const lowConfidence = hasCoordinates && (currentSamples.length < 3 || previousSamples.length < 3 || recentBaselineSamples.length < 6);
+    const quadrant = performanceIndex >= 100
+      ? momentum >= 0 ? 'scale' : 'protect'
+      : momentum >= 0 ? 'test' : 'fix';
+    return { platform, currentPosts: currentSamples.length, previousPosts: previousSamples.length, baselinePosts: baselineSamples.length, momentum, performanceIndex, contribution, isNew, hasCoordinates, lowConfidence, quadrant, usedHistoricalFallback: recentBaselineSamples.length < 6 };
+  }), [entries, analyticsStart, analyticsEnd, comparisonStart, comparisonEnd, opportunityBaselineStart, opportunityBaselineEnd, analyticsMetric]);
+  const opportunityVisible = opportunityPlatforms.filter((item) => item.hasCoordinates);
+  const opportunityUnavailable = opportunityPlatforms.filter((item) => !item.hasCoordinates);
+  const opportunityMomentumMax = Math.max(platformStableThreshold * 3, ...opportunityVisible.map((item) => Math.abs(item.momentum)));
+  const opportunityContributionMax = Math.max(1, ...opportunityVisible.map((item) => item.contribution));
   const analyticsBuckets = useMemo(() => {
     if (!analyticsDuration) return [];
     const bucketSize = analyticsDuration <= 14 ? 1 : analyticsDuration <= 60 ? 7 : 30;
@@ -807,8 +856,9 @@ export default function Home() {
           return <article className="analytics-kpi" key={card.label}><span>{card.label}</span><strong>{card.value}</strong>{compareAnalytics && <small className={positive ? 'up' : 'down'}>{change === null ? (card.current > 0 ? 'New' : '0%') : `${change >= 0 ? '↑' : '↓'} ${Math.abs(change).toFixed(1)}%`} <i>vs previous</i></small>}</article>;
         })}</div>
         {analyticsPlatform === 'all' && <div className="platform-momentum-card">
-          <div className="chart-head momentum-head"><div><span>Platform momentum</span><small>Ranked by change versus the previous period · Stable within {analyticsMetric === 'engagementRate' ? '±0.5pp' : '±5%'}.</small></div><div className="momentum-controls"><span className="momentum-mode" aria-label="Momentum calculation mode"><button type="button" className={analyticsMode === 'total' ? 'active' : ''} onClick={() => setAnalyticsMode('total')}>Total</button><button type="button" className={analyticsMode === 'perPost' ? 'active' : ''} onClick={() => setAnalyticsMode('perPost')}>Per post</button></span><select aria-label="Platform momentum metric" value={analyticsMetric} onChange={(event) => setAnalyticsMetric(event.target.value as AnalyticsMetric)}><option value="views">Views</option><option value="interactions">Interactions</option><option value="follows">Follows</option><option value="engagementRate">Engagement rate</option></select></div></div>
-          <div className="momentum-axis"><span>Decline</span><i>Stable</i><span>Growth</span></div>
+          <div className="platform-analysis-tabs"><button type="button" className={platformAnalysisView === 'momentum' ? 'active' : ''} onClick={() => setPlatformAnalysisView('momentum')}>Momentum bars</button><button type="button" className={platformAnalysisView === 'opportunity' ? 'active' : ''} onClick={() => setPlatformAnalysisView('opportunity')}>Opportunity map</button></div>
+          <div className="chart-head momentum-head"><div><span>{platformAnalysisView === 'momentum' ? 'Platform momentum' : 'Platform opportunity map'}</span><small>{platformAnalysisView === 'momentum' ? `Ranked by change versus the previous period · Stable within ${analyticsMetric === 'engagementRate' ? '±0.5pp' : '±5%'}.` : 'Momentum versus the previous period · Performance indexed against each platform’s own historical benchmark.'}</small></div><div className="momentum-controls">{platformAnalysisView === 'momentum' ? <span className="momentum-mode" aria-label="Momentum calculation mode"><button type="button" className={analyticsMode === 'total' ? 'active' : ''} onClick={() => setAnalyticsMode('total')}>Total</button><button type="button" className={analyticsMode === 'perPost' ? 'active' : ''} onClick={() => setAnalyticsMode('perPost')}>Per post</button></span> : <span className="opportunity-mode">Per post fixed</span>}<select aria-label="Platform analysis metric" value={analyticsMetric} onChange={(event) => setAnalyticsMetric(event.target.value as AnalyticsMetric)}><option value="views">Views</option><option value="interactions">Interactions</option><option value="follows">Follows</option><option value="engagementRate">Engagement rate</option></select></div></div>
+          {platformAnalysisView === 'momentum' ? <><div className="momentum-axis"><span>Decline</span><i>Stable</i><span>Growth</span></div>
           <div className="momentum-list">{platformMomentum.map((item) => {
             const positive = item.delta >= 0;
             const stable = item.hasData && !item.isNew && Math.abs(item.delta) < platformStableThreshold;
@@ -823,7 +873,24 @@ export default function Home() {
               <span className={`momentum-change ${!item.hasData || stable ? 'neutral' : positive ? 'positive' : 'negative'}`}><strong>{changeLabel}</strong><small>{formatValue(item.previous)} → {formatValue(item.current)}{analyticsMode === 'perPost' && analyticsMetric !== 'engagementRate' ? ' avg/post' : ''}</small></span>
               <i className="momentum-arrow">›</i>
             </button>;
-          })}</div>
+          })}</div></> : <div className="opportunity-section">
+            <div className="opportunity-key"><span><i className="scale" />Scale</span><span><i className="protect" />Protect</span><span><i className="test" />Test</span><span><i className="fix" />Fix</span><small>Bubble size = current contribution</small></div>
+            <div className="opportunity-map" role="img" aria-label={`${analyticsMetric} platform opportunity map`}>
+              <div className="opportunity-quadrant protect"><strong>PROTECT</strong><small>Strong · slowing</small></div><div className="opportunity-quadrant scale"><strong>SCALE</strong><small>Strong · growing</small></div><div className="opportunity-quadrant fix"><strong>FIX</strong><small>Weak · declining</small></div><div className="opportunity-quadrant test"><strong>TEST</strong><small>Weak · improving</small></div>
+              <i className="opportunity-x-axis" /><i className="opportunity-y-axis" />
+              <span className="opportunity-axis-label top">High performance</span><span className="opportunity-axis-label bottom">Low performance</span><span className="opportunity-axis-label left">Decline</span><span className="opportunity-axis-label right">Growth</span>
+              {opportunityVisible.map((item) => {
+                const left = 50 + (Math.max(-opportunityMomentumMax, Math.min(opportunityMomentumMax, item.momentum)) / opportunityMomentumMax) * 43;
+                const boundedIndex = Math.max(20, Math.min(180, item.performanceIndex));
+                const top = 50 - ((boundedIndex - 100) / 80) * 43;
+                const size = 50 + Math.sqrt(item.contribution / opportunityContributionMax) * 30;
+                const momentumLabel = analyticsMetric === 'engagementRate' ? `${item.momentum >= 0 ? '+' : ''}${item.momentum.toFixed(1)}pp` : `${item.momentum >= 0 ? '+' : ''}${item.momentum.toFixed(0)}%`;
+                return <button type="button" className={`opportunity-bubble ${item.quadrant}${item.lowConfidence ? ' low-confidence' : ''}`} style={{ left: `${left}%`, top: `${top}%`, width: `${size}px`, height: `${size}px` }} key={item.platform} onClick={() => setAnalyticsPlatform(item.platform)} aria-label={`${item.platform}: performance index ${Math.round(item.performanceIndex)}, momentum ${momentumLabel}`}><strong>{item.platform}</strong><small>{Math.round(item.performanceIndex)} index</small><em>{momentumLabel}</em>{item.lowConfidence && <i>Low confidence</i>}</button>;
+              })}
+            </div>
+            <div className="opportunity-foot"><span><b>100 index</b> = the platform’s typical historical performance</span><span>Baseline: previous 90 days{opportunityPlatforms.some((item) => item.usedHistoricalFallback) ? ' · fallback used where history was limited' : ''}</span></div>
+            {opportunityUnavailable.length > 0 && <div className="opportunity-unavailable"><strong>Not enough data</strong>{opportunityUnavailable.map((item) => <button type="button" key={item.platform} onClick={() => setAnalyticsPlatform(item.platform)}><span>{item.platform}</span><small>{item.isNew ? 'New platform · needs a previous-period benchmark' : `${item.currentPosts} current · ${item.previousPosts} previous · needs more history`}</small><i>›</i></button>)}</div>}
+          </div>}
         </div>}
         <div className="analytics-chart-card">
           <div className="chart-head"><div><span>{analyticsMetricLabel} trend</span><small>{analyticsStart} – {analyticsEnd}{compareAnalytics ? ` · compared with ${comparisonStart} – ${comparisonEnd}` : ''}</small></div><select aria-label="Chart metric" value={analyticsMetric} onChange={(event) => setAnalyticsMetric(event.target.value as AnalyticsMetric)}><option value="views">Views</option><option value="interactions">Interactions</option><option value="follows">Follows</option><option value="engagementRate">Engagement rate</option></select></div>
