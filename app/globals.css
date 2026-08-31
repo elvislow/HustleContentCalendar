@@ -210,8 +210,16 @@ button { color: inherit; }
 .momentum-change.neutral strong { color: var(--muted); }
 .momentum-arrow { color: #aa96b3; text-align: right; font-size: 18px; font-style: normal; }
 .opportunity-section { margin-top: 15px; }
+.opportunity-star { position: relative; overflow: hidden; margin-bottom: 13px; padding: 18px 20px; border: 1px solid #e2c9d9; border-radius: 18px; background: linear-gradient(120deg, #fff5df, #fff1f7 52%, #f3e9ff); box-shadow: 0 13px 30px #9a407614; }
+.opportunity-star::after { content: '★'; position: absolute; top: -26px; right: 18px; color: #ffffff94; font-size: 100px; line-height: 1; pointer-events: none; }
+.opportunity-star > span { position: relative; z-index: 1; color: #b34283; font-size: 8px; font-weight: 950; letter-spacing: .16em; }
+.opportunity-star h3 { position: relative; z-index: 1; max-width: 850px; margin: 6px 0 7px; font-size: clamp(18px, 2.2vw, 28px); line-height: 1.15; letter-spacing: -.035em; }
+.opportunity-star p { position: relative; z-index: 1; max-width: 900px; margin: 0; color: #66516d; font-size: 9px; line-height: 1.55; }
+.opportunity-star p b { color: #783d75; }
+.opportunity-star small { position: relative; z-index: 1; display: block; margin-top: 8px; color: #9b829b; font-size: 7px; }
 .opportunity-key { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 9px; color: var(--muted); font-size: 7px; font-weight: 800; }
 .opportunity-key > span { display: flex; align-items: center; gap: 5px; }
+.opportunity-key b { color: #66536f; }
 .opportunity-key i { width: 8px; height: 8px; border-radius: 50%; }
 .opportunity-key i.scale { background: #9e36d3; }
 .opportunity-key i.protect { background: #d7479d; }
@@ -246,6 +254,17 @@ button { color: inherit; }
 .opportunity-bubble > i { position: absolute; top: calc(100% + 3px); left: 50%; transform: translateX(-50%); color: #a2682e; font-size: 6px; font-style: normal; font-weight: 900; white-space: nowrap; }
 .opportunity-foot { display: flex; justify-content: space-between; gap: 12px; padding: 8px 3px 0; color: #96869f; font-size: 7px; }
 .opportunity-foot b { color: #705d7a; }
+.opportunity-conclusions { margin-top: 14px; overflow: hidden; border: 1px solid #dfd1e5; border-radius: 17px; background: #fff; }
+.opportunity-conclusions > div { padding: 13px 14px 10px; background: linear-gradient(120deg, #fff7ef, #fff5fa, #f8f1ff); }
+.opportunity-conclusions > div span { color: var(--pink); font-size: 7px; font-weight: 900; letter-spacing: .13em; }
+.opportunity-conclusions h4 { margin: 3px 0 0; font-size: 14px; }
+.opportunity-conclusions button { width: 100%; display: grid; grid-template-columns: 32px 1fr 12px; gap: 10px; align-items: center; padding: 11px 14px; border: 0; border-top: 1px solid var(--line); background: #fff; color: var(--ink); text-align: left; cursor: pointer; }
+.opportunity-conclusions button:hover { background: #fff7fb; }
+.opportunity-conclusions button > i { font-size: 18px; font-style: normal; }
+.opportunity-conclusions button > span { display: flex; flex-direction: column; gap: 3px; }
+.opportunity-conclusions button strong { font-size: 9px; }
+.opportunity-conclusions button small { color: var(--muted); font-size: 7px; line-height: 1.45; }
+.opportunity-conclusions button > b { color: #a18dab; font-size: 14px; }
 .opportunity-unavailable { margin-top: 13px; overflow: hidden; border: 1px dashed #dbcce2; border-radius: 15px; }
 .opportunity-unavailable > strong { display: block; padding: 9px 12px 7px; color: #8b7895; font-size: 8px; }
 .opportunity-unavailable button { width: 100%; display: grid; grid-template-columns: 85px 1fr 12px; gap: 10px; align-items: center; padding: 9px 12px; border: 0; border-top: 1px solid #eee5f1; background: #fcf9fd; color: var(--ink); text-align: left; cursor: pointer; }
@@ -696,9 +715,12 @@ button { color: inherit; }
   .momentum-track b { top: 4px; height: 14px; }
   .opportunity-key { justify-content: flex-start; }
   .opportunity-key small { width: 100%; margin-left: 0; }
+  .opportunity-star { padding: 16px 14px; }
+  .opportunity-star::after { right: -6px; font-size: 86px; }
   .opportunity-map { height: 390px; }
   .opportunity-quadrant { padding: 13px 10px; }
   .opportunity-foot { align-items: flex-start; flex-direction: column; }
+  .opportunity-conclusions button { grid-template-columns: 28px 1fr 10px; padding-right: 10px; padding-left: 10px; }
   .opportunity-unavailable button { grid-template-columns: 62px 1fr 10px; }
   .chart-head { align-items: flex-start; flex-direction: column; }
   .chart-head select { width: 100%; }

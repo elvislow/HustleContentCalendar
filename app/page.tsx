@@ -401,43 +401,61 @@ export default function Home() {
   }).sort((a, b) => b.delta - a.delta), [entries, analyticsStart, analyticsEnd, comparisonStart, comparisonEnd, analyticsMetric, analyticsMode]);
   const platformMomentumMax = Math.max(1, ...platformMomentum.map((item) => Math.abs(item.delta)));
   const platformStableThreshold = analyticsMetric === 'engagementRate' ? .5 : 5;
-  const opportunityBaselineStart = addDays(analyticsStart, -90);
-  const opportunityBaselineEnd = addDays(analyticsStart, -1);
   const opportunityPlatforms = useMemo(() => platforms.map((platform) => {
-    const currentSamples = platformMetricSamples(entries, analyticsStart, analyticsEnd, platform, analyticsMetric);
-    const previousSamples = platformMetricSamples(entries, comparisonStart, comparisonEnd, platform, analyticsMetric);
-    const recentBaselineSamples = platformMetricSamples(entries, opportunityBaselineStart, opportunityBaselineEnd, platform, analyticsMetric);
-    const historicalSamples = entries
-      .filter((entry) => entry.date < analyticsStart && entry.platforms.includes(platform) && Boolean(entry.platformData[platform].postUrl))
-      .map((entry) => {
-        const data = entry.platformData[platform];
-        if (analyticsMetric === 'views') return data.views;
-        if (analyticsMetric === 'interactions') return data.likes + data.shares + data.saves;
-        if (analyticsMetric === 'follows') return data.follows;
-        return insightRate(data);
-      });
-    const baselineSamples = recentBaselineSamples.length >= 6 ? recentBaselineSamples : historicalSamples;
-    const current = average(currentSamples);
-    const previous = average(previousSamples);
-    const baselineMedian = median(baselineSamples);
-    const baseline = baselineMedian > 0 ? baselineMedian : average(baselineSamples);
-    const momentum = analyticsMetric === 'engagementRate'
-      ? current - previous
-      : previous > 0 ? ((current - previous) / previous) * 100 : 0;
-    const performanceIndex = baseline > 0 ? (current / baseline) * 100 : 0;
-    const contribution = analyticsMetric === 'engagementRate' ? currentSamples.length : currentSamples.reduce((sum, value) => sum + value, 0);
-    const isNew = current > 0 && previous === 0;
-    const hasCoordinates = currentSamples.length > 0 && previous > 0 && baseline > 0;
-    const lowConfidence = hasCoordinates && (currentSamples.length < 3 || previousSamples.length < 3 || recentBaselineSamples.length < 6);
+    const metrics: AnalyticsMetric[] = ['views', 'interactions', 'follows', 'engagementRate'];
+    const metricIndexes = metrics.map((metric) => {
+      const currentSamples = platformMetricSamples(entries, analyticsStart, analyticsEnd, platform, metric);
+      const previousSamples = platformMetricSamples(entries, comparisonStart, comparisonEnd, platform, metric);
+      const benchmarkValues = Array.from({ length: 4 }, (_, index) => {
+        const periodEnd = addDays(analyticsStart, -1 - index * Math.max(1, analyticsDuration));
+        const periodStart = addDays(periodEnd, -(Math.max(1, analyticsDuration) - 1));
+        const samples = platformMetricSamples(entries, periodStart, periodEnd, platform, metric);
+        return samples.length ? average(samples) : null;
+      }).filter((value): value is number => value !== null);
+      const benchmarkMedian = median(benchmarkValues);
+      const benchmark = benchmarkMedian > 0 ? benchmarkMedian : average(benchmarkValues);
+      const current = average(currentSamples);
+      const previous = average(previousSamples);
+      return benchmark > 0 && currentSamples.length > 0 && previousSamples.length > 0
+        ? { currentIndex: (current / benchmark) * 100, previousIndex: (previous / benchmark) * 100, benchmarkPeriods: benchmarkValues.length }
+        : null;
+    }).filter((item): item is { currentIndex: number; previousIndex: number; benchmarkPeriods: number } => Boolean(item));
+    const currentPosts = platformMetricSamples(entries, analyticsStart, analyticsEnd, platform, 'views').length;
+    const previousPosts = platformMetricSamples(entries, comparisonStart, comparisonEnd, platform, 'views').length;
+    const performanceIndex = average(metricIndexes.map((item) => item.currentIndex));
+    const previousPerformanceIndex = average(metricIndexes.map((item) => item.previousIndex));
+    const momentum = performanceIndex - previousPerformanceIndex;
+    const isNew = currentPosts > 0 && previousPosts === 0;
+    const benchmarkPeriods = metricIndexes.length ? Math.min(...metricIndexes.map((item) => item.benchmarkPeriods)) : 0;
+    const hasCoordinates = currentPosts > 0 && previousPosts > 0 && metricIndexes.length >= 2 && benchmarkPeriods >= 2;
+    const lowConfidence = hasCoordinates && (currentPosts < 3 || previousPosts < 3 || benchmarkPeriods < 4 || metricIndexes.length < 4);
     const quadrant = performanceIndex >= 100
       ? momentum >= 0 ? 'scale' : 'protect'
       : momentum >= 0 ? 'test' : 'fix';
-    return { platform, currentPosts: currentSamples.length, previousPosts: previousSamples.length, baselinePosts: baselineSamples.length, momentum, performanceIndex, contribution, isNew, hasCoordinates, lowConfidence, quadrant, usedHistoricalFallback: recentBaselineSamples.length < 6 };
-  }), [entries, analyticsStart, analyticsEnd, comparisonStart, comparisonEnd, opportunityBaselineStart, opportunityBaselineEnd, analyticsMetric]);
+    return { platform, currentPosts, previousPosts, momentum, performanceIndex, contribution: currentPosts, isNew, hasCoordinates, lowConfidence, quadrant, benchmarkPeriods, metricCount: metricIndexes.length };
+  }), [entries, analyticsStart, analyticsEnd, comparisonStart, comparisonEnd, analyticsDuration]);
   const opportunityVisible = opportunityPlatforms.filter((item) => item.hasCoordinates);
   const opportunityUnavailable = opportunityPlatforms.filter((item) => !item.hasCoordinates);
-  const opportunityMomentumMax = Math.max(platformStableThreshold * 3, ...opportunityVisible.map((item) => Math.abs(item.momentum)));
+  const opportunityMomentumMax = Math.max(25, ...opportunityVisible.map((item) => Math.abs(item.momentum)));
   const opportunityContributionMax = Math.max(1, ...opportunityVisible.map((item) => item.contribution));
+  const opportunityRecommendations = opportunityVisible.slice().sort((a, b) => {
+    const priority: Record<string, number> = { scale: 0, test: 1, protect: 2, fix: 3 };
+    return priority[a.quadrant] - priority[b.quadrant] || b.performanceIndex - a.performanceIndex;
+  });
+  const starConclusion = (() => {
+    if (!opportunityVisible.length) return { title: 'Not enough history for a reliable conclusion yet', advice: 'Keep recording platform results. The map needs at least two earlier matching periods and data for at least two of the four composite metrics.' };
+    const scale = opportunityVisible.filter((item) => item.quadrant === 'scale').sort((a, b) => b.performanceIndex + b.momentum - (a.performanceIndex + a.momentum))[0];
+    const test = opportunityVisible.filter((item) => item.quadrant === 'test').sort((a, b) => b.momentum - a.momentum)[0];
+    const protect = opportunityVisible.filter((item) => item.quadrant === 'protect').sort((a, b) => a.momentum - b.momentum)[0];
+    const fix = opportunityVisible.filter((item) => item.quadrant === 'fix').sort((a, b) => a.performanceIndex + a.momentum - (b.performanceIndex + b.momentum))[0];
+    const risk = fix || protect;
+    const confidenceNote = opportunityVisible.some((item) => item.lowConfidence) ? ' Recheck after each platform has at least 3 posts in both periods.' : '';
+    if (scale && risk) return { title: `Mixed result: ${scale.platform} is ready to scale, while ${risk.platform} needs attention`, advice: `Move one content slot next period toward ${scale.platform}, reuse its strongest recent format, and use the freed ${risk.platform} slot for one redesigned test instead of repeating the same approach.${confidenceNote}` };
+    if (scale) return { title: `${scale.platform} is the clearest growth opportunity`, advice: `Add one more ${scale.platform} post in the next matching period and repeat the topic or format behind its strongest recent content. Keep the other platforms at their current cadence while you validate the lift.${confidenceNote}` };
+    if (test) return { title: `${test.platform} is improving, but it has not proven strong performance yet`, advice: `Keep ${test.platform} volume steady and run 2–3 focused tests using one variable at a time—hook, format or topic—before increasing output.${confidenceNote}` };
+    if (protect) return { title: `${protect.platform} is still strong, but momentum is weakening`, advice: `Do not cut ${protect.platform} yet. Audit the latest hooks, topics and posting consistency against the earlier period, then restore the strongest pattern.${confidenceNote}` };
+    return { title: `${fix?.platform || opportunityVisible[0].platform} needs correction before more investment`, advice: `Pause expansion, change the content angle or format, and collect at least 3 new posts before deciding whether to reduce this platform further.${confidenceNote}` };
+  })();
   const analyticsBuckets = useMemo(() => {
     if (!analyticsDuration) return [];
     const bucketSize = analyticsDuration <= 14 ? 1 : analyticsDuration <= 60 ? 7 : 30;
@@ -857,7 +875,7 @@ export default function Home() {
         })}</div>
         {analyticsPlatform === 'all' && <div className="platform-momentum-card">
           <div className="platform-analysis-tabs"><button type="button" className={platformAnalysisView === 'momentum' ? 'active' : ''} onClick={() => setPlatformAnalysisView('momentum')}>Momentum bars</button><button type="button" className={platformAnalysisView === 'opportunity' ? 'active' : ''} onClick={() => setPlatformAnalysisView('opportunity')}>Opportunity map</button></div>
-          <div className="chart-head momentum-head"><div><span>{platformAnalysisView === 'momentum' ? 'Platform momentum' : 'Platform opportunity map'}</span><small>{platformAnalysisView === 'momentum' ? `Ranked by change versus the previous period · Stable within ${analyticsMetric === 'engagementRate' ? '±0.5pp' : '±5%'}.` : 'Momentum versus the previous period · Performance indexed against each platform’s own historical benchmark.'}</small></div><div className="momentum-controls">{platformAnalysisView === 'momentum' ? <span className="momentum-mode" aria-label="Momentum calculation mode"><button type="button" className={analyticsMode === 'total' ? 'active' : ''} onClick={() => setAnalyticsMode('total')}>Total</button><button type="button" className={analyticsMode === 'perPost' ? 'active' : ''} onClick={() => setAnalyticsMode('perPost')}>Per post</button></span> : <span className="opportunity-mode">Per post fixed</span>}<select aria-label="Platform analysis metric" value={analyticsMetric} onChange={(event) => setAnalyticsMetric(event.target.value as AnalyticsMetric)}><option value="views">Views</option><option value="interactions">Interactions</option><option value="follows">Follows</option><option value="engagementRate">Engagement rate</option></select></div></div>
+          <div className="chart-head momentum-head"><div><span>{platformAnalysisView === 'momentum' ? 'Platform momentum' : 'Platform opportunity map'}</span><small>{platformAnalysisView === 'momentum' ? `Ranked by change versus the previous period · Stable within ${analyticsMetric === 'engagementRate' ? '±0.5pp' : '±5%'}.` : 'One composite index averaging four metrics · Benchmark automatically uses the previous 4 periods matching your selected date range.'}</small></div><div className="momentum-controls">{platformAnalysisView === 'momentum' ? <><span className="momentum-mode" aria-label="Momentum calculation mode"><button type="button" className={analyticsMode === 'total' ? 'active' : ''} onClick={() => setAnalyticsMode('total')}>Total</button><button type="button" className={analyticsMode === 'perPost' ? 'active' : ''} onClick={() => setAnalyticsMode('perPost')}>Per post</button></span><select aria-label="Platform analysis metric" value={analyticsMetric} onChange={(event) => setAnalyticsMetric(event.target.value as AnalyticsMetric)}><option value="views">Views</option><option value="interactions">Interactions</option><option value="follows">Follows</option><option value="engagementRate">Engagement rate</option></select></> : <span className="opportunity-mode">4-metric average</span>}</div></div>
           {platformAnalysisView === 'momentum' ? <><div className="momentum-axis"><span>Decline</span><i>Stable</i><span>Growth</span></div>
           <div className="momentum-list">{platformMomentum.map((item) => {
             const positive = item.delta >= 0;
@@ -874,9 +892,10 @@ export default function Home() {
               <i className="momentum-arrow">›</i>
             </button>;
           })}</div></> : <div className="opportunity-section">
-            <div className="opportunity-key"><span><i className="scale" />Scale</span><span><i className="protect" />Protect</span><span><i className="test" />Test</span><span><i className="fix" />Fix</span><small>Bubble size = current contribution</small></div>
-            <div className="opportunity-map" role="img" aria-label={`${analyticsMetric} platform opportunity map`}>
-              <div className="opportunity-quadrant protect"><strong>PROTECT</strong><small>Strong · slowing</small></div><div className="opportunity-quadrant scale"><strong>SCALE</strong><small>Strong · growing</small></div><div className="opportunity-quadrant fix"><strong>FIX</strong><small>Weak · declining</small></div><div className="opportunity-quadrant test"><strong>TEST</strong><small>Weak · improving</small></div>
+            <div className="opportunity-star"><span>★ STAR CONCLUSION</span><h3>{starConclusion.title}</h3><p><b>Advice:</b> {starConclusion.advice}</p><small>Based on {analyticsStart} – {analyticsEnd} · compared with {comparisonStart} – {comparisonEnd}</small></div>
+            <div className="opportunity-key"><span>🚀 <b>Scale</b> = increase output</span><span>🛡️ <b>Protect</b> = defend performance</span><span>🧪 <b>Test</b> = keep experimenting</span><span>🔧 <b>Fix</b> = change or reduce</span><small>Bubble size = current post count</small></div>
+            <div className="opportunity-map" role="img" aria-label="Composite platform opportunity map">
+              <div className="opportunity-quadrant protect"><strong>🛡️ PROTECT</strong><small>Strong · slowing</small></div><div className="opportunity-quadrant scale"><strong>🚀 SCALE</strong><small>Strong · growing</small></div><div className="opportunity-quadrant fix"><strong>🔧 FIX</strong><small>Weak · declining</small></div><div className="opportunity-quadrant test"><strong>🧪 TEST</strong><small>Weak · improving</small></div>
               <i className="opportunity-x-axis" /><i className="opportunity-y-axis" />
               <span className="opportunity-axis-label top">High performance</span><span className="opportunity-axis-label bottom">Low performance</span><span className="opportunity-axis-label left">Decline</span><span className="opportunity-axis-label right">Growth</span>
               {opportunityVisible.map((item) => {
@@ -884,12 +903,18 @@ export default function Home() {
                 const boundedIndex = Math.max(20, Math.min(180, item.performanceIndex));
                 const top = 50 - ((boundedIndex - 100) / 80) * 43;
                 const size = 50 + Math.sqrt(item.contribution / opportunityContributionMax) * 30;
-                const momentumLabel = analyticsMetric === 'engagementRate' ? `${item.momentum >= 0 ? '+' : ''}${item.momentum.toFixed(1)}pp` : `${item.momentum >= 0 ? '+' : ''}${item.momentum.toFixed(0)}%`;
+                const momentumLabel = `${item.momentum >= 0 ? '+' : ''}${item.momentum.toFixed(0)} pts`;
                 return <button type="button" className={`opportunity-bubble ${item.quadrant}${item.lowConfidence ? ' low-confidence' : ''}`} style={{ left: `${left}%`, top: `${top}%`, width: `${size}px`, height: `${size}px` }} key={item.platform} onClick={() => setAnalyticsPlatform(item.platform)} aria-label={`${item.platform}: performance index ${Math.round(item.performanceIndex)}, momentum ${momentumLabel}`}><strong>{item.platform}</strong><small>{Math.round(item.performanceIndex)} index</small><em>{momentumLabel}</em>{item.lowConfidence && <i>Low confidence</i>}</button>;
               })}
             </div>
-            <div className="opportunity-foot"><span><b>100 index</b> = the platform’s typical historical performance</span><span>Baseline: previous 90 days{opportunityPlatforms.some((item) => item.usedHistoricalFallback) ? ' · fallback used where history was limited' : ''}</span></div>
-            {opportunityUnavailable.length > 0 && <div className="opportunity-unavailable"><strong>Not enough data</strong>{opportunityUnavailable.map((item) => <button type="button" key={item.platform} onClick={() => setAnalyticsPlatform(item.platform)}><span>{item.platform}</span><small>{item.isNew ? 'New platform · needs a previous-period benchmark' : `${item.currentPosts} current · ${item.previousPosts} previous · needs more history`}</small><i>›</i></button>)}</div>}
+            <div className="opportunity-foot"><span><b>100 index</b> = median of the previous 4 matching periods</span><span>Momentum = current composite index minus previous-period index</span></div>
+            {opportunityRecommendations.length > 0 && <div className="opportunity-conclusions"><div><span>RECOMMENDED ACTIONS</span><h4>What this map is telling you</h4></div>{opportunityRecommendations.map((item) => {
+              const icon = item.quadrant === 'scale' ? '🚀' : item.quadrant === 'protect' ? '🛡️' : item.quadrant === 'test' ? '🧪' : '🔧';
+              const title = item.quadrant === 'scale' ? 'Scale up' : item.quadrant === 'protect' ? 'Protect performance' : item.quadrant === 'test' ? 'Keep testing' : 'Fix or reduce';
+              const explanation = item.quadrant === 'scale' ? `performance is ${Math.round(item.performanceIndex)} index and still improving` : item.quadrant === 'protect' ? `performance remains above normal at ${Math.round(item.performanceIndex)} index, but momentum fell ${Math.abs(item.momentum).toFixed(0)} points` : item.quadrant === 'test' ? `performance is below normal, but momentum improved ${item.momentum.toFixed(0)} points` : `performance is below normal and momentum fell ${Math.abs(item.momentum).toFixed(0)} points`;
+              return <button type="button" key={item.platform} onClick={() => setAnalyticsPlatform(item.platform)}><i>{icon}</i><span><strong>{item.platform} · {title}</strong><small>{explanation}.{item.lowConfidence ? ' Treat as directional because the sample is limited.' : ''}</small></span><b>›</b></button>;
+            })}</div>}
+            {opportunityUnavailable.length > 0 && <div className="opportunity-unavailable"><strong>Not enough data</strong>{opportunityUnavailable.map((item) => <button type="button" key={item.platform} onClick={() => setAnalyticsPlatform(item.platform)}><span>{item.platform}</span><small>{item.isNew ? 'New platform · needs a previous-period benchmark' : `${item.currentPosts} current · ${item.previousPosts} previous · ${item.benchmarkPeriods} benchmark periods available`}</small><i>›</i></button>)}</div>}
           </div>}
         </div>}
         <div className="analytics-chart-card">
