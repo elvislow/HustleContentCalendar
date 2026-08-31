@@ -17,6 +17,7 @@ type Entry = {
 };
 type StatusKey = 'idea' | 'editing' | 'ready' | 'published';
 type AnalyticsMetric = 'views' | 'interactions' | 'follows' | 'engagementRate';
+type AnalyticsMode = 'total' | 'perPost';
 type AnalyticsTotals = { posts: number; views: number; likes: number; shares: number; saves: number; follows: number; interactions: number; engagementRate: number };
 type AudienceSnapshot = {
   id?: string; month: string; platform: Platform; startingFollowers: number; endingFollowers: number;
@@ -200,6 +201,7 @@ export default function Home() {
   const [statusFilter, setStatusFilter] = useState<'all' | StatusKey>('all');
   const [analyticsPlatform, setAnalyticsPlatform] = useState<'all' | Platform>('all');
   const [analyticsMetric, setAnalyticsMetric] = useState<AnalyticsMetric>('views');
+  const [analyticsMode, setAnalyticsMode] = useState<AnalyticsMode>('perPost');
   const [analyticsPreset, setAnalyticsPreset] = useState<'last7' | 'last30' | 'custom'>('last7');
   const [analyticsEnd, setAnalyticsEnd] = useState(today);
   const [analyticsStart, setAnalyticsStart] = useState(() => addDays(today(), -6));
@@ -370,16 +372,23 @@ export default function Home() {
   const platformMomentum = useMemo(() => platforms.map((platform) => {
     const currentTotals = aggregateAnalytics(entries, analyticsStart, analyticsEnd, platform);
     const previousTotals = aggregateAnalytics(entries, comparisonStart, comparisonEnd, platform);
-    const current = analyticsMetricValue(currentTotals, analyticsMetric);
-    const previous = analyticsMetricValue(previousTotals, analyticsMetric);
+    const momentumValue = (totals: AnalyticsTotals) => {
+      const value = analyticsMetricValue(totals, analyticsMetric);
+      return analyticsMode === 'perPost' && analyticsMetric !== 'engagementRate'
+        ? totals.posts > 0 ? value / totals.posts : 0
+        : value;
+    };
+    const current = momentumValue(currentTotals);
+    const previous = momentumValue(previousTotals);
     const hasData = currentTotals.posts > 0 || previousTotals.posts > 0;
     const isNew = hasData && previous === 0 && current > 0;
     const delta = analyticsMetric === 'engagementRate'
       ? current - previous
       : previous > 0 ? ((current - previous) / previous) * 100 : isNew ? 100 : 0;
-    return { platform, current, previous, delta, isNew, hasData, posts: currentTotals.posts };
-  }), [entries, analyticsStart, analyticsEnd, comparisonStart, comparisonEnd, analyticsMetric]);
+    return { platform, current, previous, delta, isNew, hasData, currentPosts: currentTotals.posts, previousPosts: previousTotals.posts };
+  }).sort((a, b) => b.delta - a.delta), [entries, analyticsStart, analyticsEnd, comparisonStart, comparisonEnd, analyticsMetric, analyticsMode]);
   const platformMomentumMax = Math.max(1, ...platformMomentum.map((item) => Math.abs(item.delta)));
+  const platformStableThreshold = analyticsMetric === 'engagementRate' ? .5 : 5;
   const analyticsBuckets = useMemo(() => {
     if (!analyticsDuration) return [];
     const bucketSize = analyticsDuration <= 14 ? 1 : analyticsDuration <= 60 ? 7 : 30;
@@ -798,17 +807,20 @@ export default function Home() {
           return <article className="analytics-kpi" key={card.label}><span>{card.label}</span><strong>{card.value}</strong>{compareAnalytics && <small className={positive ? 'up' : 'down'}>{change === null ? (card.current > 0 ? 'New' : '0%') : `${change >= 0 ? '↑' : '↓'} ${Math.abs(change).toFixed(1)}%`} <i>vs previous</i></small>}</article>;
         })}</div>
         {analyticsPlatform === 'all' && <div className="platform-momentum-card">
-          <div className="chart-head"><div><span>Platform momentum</span><small>See which platforms are lifting or slowing performance versus the previous period.</small></div><select aria-label="Platform momentum metric" value={analyticsMetric} onChange={(event) => setAnalyticsMetric(event.target.value as AnalyticsMetric)}><option value="views">Views</option><option value="interactions">Interactions</option><option value="follows">Follows</option><option value="engagementRate">Engagement rate</option></select></div>
-          <div className="momentum-axis"><span>Decline</span><i>0</i><span>Growth</span></div>
+          <div className="chart-head momentum-head"><div><span>Platform momentum</span><small>Ranked by change versus the previous period · Stable within {analyticsMetric === 'engagementRate' ? '±0.5pp' : '±5%'}.</small></div><div className="momentum-controls"><span className="momentum-mode" aria-label="Momentum calculation mode"><button type="button" className={analyticsMode === 'total' ? 'active' : ''} onClick={() => setAnalyticsMode('total')}>Total</button><button type="button" className={analyticsMode === 'perPost' ? 'active' : ''} onClick={() => setAnalyticsMode('perPost')}>Per post</button></span><select aria-label="Platform momentum metric" value={analyticsMetric} onChange={(event) => setAnalyticsMetric(event.target.value as AnalyticsMetric)}><option value="views">Views</option><option value="interactions">Interactions</option><option value="follows">Follows</option><option value="engagementRate">Engagement rate</option></select></div></div>
+          <div className="momentum-axis"><span>Decline</span><i>Stable</i><span>Growth</span></div>
           <div className="momentum-list">{platformMomentum.map((item) => {
             const positive = item.delta >= 0;
+            const stable = item.hasData && !item.isNew && Math.abs(item.delta) < platformStableThreshold;
+            const lowConfidence = item.hasData && (item.currentPosts < 3 || item.previousPosts < 3);
             const width = item.hasData ? Math.max(2, (Math.abs(item.delta) / platformMomentumMax) * 100) : 0;
-            const formatValue = (value: number) => analyticsMetric === 'engagementRate' ? `${value.toFixed(1)}%` : compactNumber.format(value);
-            const changeLabel = !item.hasData ? 'No data' : item.isNew ? 'New' : analyticsMetric === 'engagementRate' ? `${item.delta >= 0 ? '+' : ''}${item.delta.toFixed(1)}pp` : `${item.delta >= 0 ? '+' : ''}${item.delta.toFixed(1)}%`;
+            const formatValue = (value: number) => analyticsMetric === 'engagementRate' ? `${value.toFixed(1)}%` : analyticsMode === 'perPost' ? compactNumber.format(Number(value.toFixed(1))) : compactNumber.format(value);
+            const preciseChange = analyticsMetric === 'engagementRate' ? `${item.delta >= 0 ? '+' : ''}${item.delta.toFixed(1)}pp` : `${item.delta >= 0 ? '+' : ''}${item.delta.toFixed(1)}%`;
+            const changeLabel = !item.hasData ? 'No data' : item.isNew ? 'New' : stable ? `Stable · ${preciseChange}` : preciseChange;
             return <button type="button" className="momentum-row" key={item.platform} onClick={() => setAnalyticsPlatform(item.platform)} aria-label={`View ${item.platform} insights`}>
-              <span className="momentum-platform"><strong>{item.platform}</strong><small>{item.posts} {item.posts === 1 ? 'post' : 'posts'}{item.posts > 0 && item.posts < 3 ? ' · Low sample' : ''}</small></span>
-              <span className="momentum-track"><i className="momentum-zero" />{item.hasData && <b className={positive ? 'positive' : 'negative'} style={{ width: `${width / 2}%`, [positive ? 'left' : 'right']: '50%' }} />}</span>
-              <span className={`momentum-change ${!item.hasData ? 'neutral' : positive ? 'positive' : 'negative'}`}><strong>{changeLabel}</strong><small>{formatValue(item.previous)} → {formatValue(item.current)}</small></span>
+              <span className="momentum-platform"><strong>{item.platform}</strong><small>{item.currentPosts} now · {item.previousPosts} prev{lowConfidence && <em>Low confidence</em>}</small></span>
+              <span className="momentum-track"><i className="momentum-stable-band" style={{ width: `${Math.min(100, (platformStableThreshold / platformMomentumMax) * 100)}%` }} /><i className="momentum-zero" />{item.hasData && <b className={stable ? 'stable' : positive ? 'positive' : 'negative'} style={{ width: `${width / 2}%`, [positive ? 'left' : 'right']: '50%' }} />}</span>
+              <span className={`momentum-change ${!item.hasData || stable ? 'neutral' : positive ? 'positive' : 'negative'}`}><strong>{changeLabel}</strong><small>{formatValue(item.previous)} → {formatValue(item.current)}{analyticsMode === 'perPost' && analyticsMetric !== 'engagementRate' ? ' avg/post' : ''}</small></span>
               <i className="momentum-arrow">›</i>
             </button>;
           })}</div>
