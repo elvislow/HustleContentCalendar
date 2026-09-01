@@ -9,17 +9,17 @@ type Brand = 'hustle' | 'second-studio';
 type Role = 'admin' | 'editor' | 'viewer';
 type Member = { id: string; email: string; role: Role; status: 'active' | 'inactive'; created_at?: string };
 type Invite = { email: string; role: Role; status: 'active' | 'inactive'; created_at?: string };
-type Insight = { postUrl: string; views: number; likes: number; shares: number; saves: number; follows: number };
+type PlatformMetricKey = 'views' | 'likes' | 'shares' | 'saves' | 'follows' | 'watchTimeHours' | 'subscribersGained' | 'reads';
+type Insight = Record<PlatformMetricKey, number> & { postUrl: string };
 type Entry = {
   id: string; date: string; hour: string; minute: string; title: string;
   platforms: Platform[]; referenceUrl: string; filmed: boolean; edited: boolean;
   platformData: Record<Platform, Insight>;
 };
 type StatusKey = 'idea' | 'editing' | 'ready' | 'published';
-type AnalyticsMetric = 'views' | 'interactions' | 'follows' | 'engagementRate';
-type AnalyticsMode = 'total' | 'perPost';
+type AnalyticsMetric = 'views' | 'likes' | 'shares' | 'saves' | 'interactions' | 'follows' | 'watchTimeHours' | 'engagementRate';
 type PlatformAnalysisView = 'momentum' | 'opportunity';
-type AnalyticsTotals = { posts: number; views: number; likes: number; shares: number; saves: number; follows: number; interactions: number; engagementRate: number };
+type AnalyticsTotals = { posts: number; views: number; likes: number; shares: number; saves: number; follows: number; watchTimeHours: number; interactions: number; engagementRate: number };
 type AudienceSnapshot = {
   id?: string; month: string; platform: Platform; startingFollowers: number; endingFollowers: number;
   reach: number; profileVisits: number; linkClicks: number; nonFollowerReachPct: number;
@@ -29,10 +29,17 @@ type AudienceSnapshot = {
 type AudienceWeek = { id?: string; month: string; platform: Platform; weekIndex: number; totalFollows: number; unfollows: number };
 
 const platforms: Platform[] = ['IG', 'YouTube', 'Lemon8', 'TikTok'];
+const compactMetric = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
+const platformMetrics: Record<Platform, { key: PlatformMetricKey; label: string; step?: number }[]> = {
+  IG: [{ key: 'views', label: 'Views' }, { key: 'likes', label: 'Likes' }, { key: 'shares', label: 'Shares' }, { key: 'saves', label: 'Saves' }, { key: 'follows', label: 'Follows' }],
+  TikTok: [{ key: 'views', label: 'Views' }, { key: 'likes', label: 'Likes' }, { key: 'shares', label: 'Shares' }, { key: 'saves', label: 'Saves' }, { key: 'follows', label: 'Follows' }],
+  YouTube: [{ key: 'views', label: 'Views' }, { key: 'watchTimeHours', label: 'Watch time (hours)', step: .1 }, { key: 'subscribersGained', label: 'Subscribers' }],
+  Lemon8: [{ key: 'reads', label: 'Reads' }, { key: 'likes', label: 'Likes' }, { key: 'saves', label: 'Saves' }],
+};
 const initialAdminEmail = 'elvis@hustle.com.sg';
 const hours = Array.from({ length: 24 }, (_, index) => String(index).padStart(2, '0'));
 const minutes = ['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'];
-const blankInsight = (): Insight => ({ postUrl: '', views: 0, likes: 0, shares: 0, saves: 0, follows: 0 });
+const blankInsight = (): Insight => ({ postUrl: '', views: 0, likes: 0, shares: 0, saves: 0, follows: 0, watchTimeHours: 0, subscribersGained: 0, reads: 0 });
 const blankPlatformData = (): Record<Platform, Insight> => ({ IG: blankInsight(), YouTube: blankInsight(), Lemon8: blankInsight(), TikTok: blankInsight() });
 const today = () => { const date = new Date(); const offset = date.getTimezoneOffset(); return new Date(date.getTime() - offset * 60000).toISOString().slice(0, 10); };
 const addDays = (value: string, amount: number) => { const date = new Date(`${value}T12:00:00`); date.setDate(date.getDate() + amount); return date.toISOString().slice(0, 10); };
@@ -41,39 +48,36 @@ const shiftMonth = (value: string, amount: number) => { const [year, month] = va
 const inclusiveDays = (start: string, end: string) => Math.max(0, Math.round((new Date(`${end}T12:00:00`).getTime() - new Date(`${start}T12:00:00`).getTime()) / 86400000) + 1);
 const emptyEntry = (): Entry => ({ id: '', date: today(), hour: '12', minute: '00', title: '', platforms: [], referenceUrl: '', filmed: false, edited: false, platformData: blankPlatformData() });
 const insightRate = (data: Insight) => data.views ? ((data.likes + data.shares + data.saves) / data.views) * 100 : 0;
+const platformMetricValue = (data: Insight, key: PlatformMetricKey) => Number(data[key] || 0);
+const platformConsumption = (data: Insight, platform: Platform) => platform === 'Lemon8' ? data.reads : data.views;
+const platformActions = (data: Insight, platform: Platform) => platform === 'YouTube' ? 0 : data.likes + data.saves + (platform === 'Lemon8' ? 0 : data.shares);
+const platformAudienceGained = (data: Insight, platform: Platform) => platform === 'YouTube' ? data.subscribersGained : platform === 'Lemon8' ? 0 : data.follows;
 const publishedPlatforms = (entry: Entry) => entry.platforms.filter((platform) => entry.platformData[platform].postUrl);
 const overallRate = (entry: Entry) => {
-  const data = entry.platforms.map((platform) => entry.platformData[platform]);
-  const views = data.reduce((sum, item) => sum + item.views, 0);
-  const interactions = data.reduce((sum, item) => sum + item.likes + item.shares + item.saves, 0);
-  return views ? (interactions / views) * 100 : 0;
+  const consumption = entry.platforms.reduce((sum, platform) => sum + platformConsumption(entry.platformData[platform], platform), 0);
+  const actions = entry.platforms.reduce((sum, platform) => sum + platformActions(entry.platformData[platform], platform), 0);
+  return consumption ? (actions / consumption) * 100 : 0;
 };
-const totalViews = (entry: Entry) => entry.platforms.reduce((sum, platform) => sum + entry.platformData[platform].views, 0);
+const totalViews = (entry: Entry) => entry.platforms.reduce((sum, platform) => sum + platformConsumption(entry.platformData[platform], platform), 0);
 const median = (values: number[]) => {
   if (!values.length) return 0;
   const sorted = [...values].sort((a, b) => a - b);
   const middle = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 };
-const benchmarkScore = (views: number, rate: number, samples: { views: number; rate: number }[]) => {
-  if (!views) return 0;
-  const valid = samples.filter((sample) => sample.views > 0);
-  const viewMedian = median(valid.map((sample) => sample.views)) || views;
-  const rateMedian = median(valid.map((sample) => sample.rate));
-  const reachScore = Math.min(views / viewMedian, 1) * 100;
-  const engagementScore = rateMedian > 0 ? Math.min(rate / rateMedian, 1) * 100 : rate > 0 ? 100 : 0;
-  return (reachScore + engagementScore) / 2;
+const platformViralScore = (data: Insight, platform: Platform, allEntries: Entry[], currentId = '') => {
+  const scores = platformMetrics[platform].map(({ key }) => {
+    const current = platformMetricValue(data, key);
+    const sampleMedian = median(allEntries.filter((entry) => entry.id !== currentId && entry.platforms.includes(platform)).map((entry) => platformMetricValue(entry.platformData[platform], key)).filter((value) => value > 0));
+    if (!current) return null;
+    return sampleMedian > 0 ? Math.min(current / sampleMedian, 1) * 100 : 100;
+  }).filter((score): score is number => score !== null);
+  return scores.length ? scores.reduce((sum, score) => sum + score, 0) / scores.length : 0;
 };
-const overallViralScore = (entry: Entry, allEntries: Entry[]) => benchmarkScore(
-  totalViews(entry),
-  overallRate(entry),
-  allEntries.filter((item) => item.id !== entry.id).map((item) => ({ views: totalViews(item), rate: overallRate(item) })),
-);
-const platformViralScore = (data: Insight, platform: Platform, allEntries: Entry[], currentId = '') => benchmarkScore(
-  data.views,
-  insightRate(data),
-  allEntries.filter((entry) => entry.id !== currentId).map((entry) => ({ views: entry.platformData[platform].views, rate: insightRate(entry.platformData[platform]) })),
-);
+const overallViralScore = (entry: Entry, allEntries: Entry[]) => {
+  const scores = entry.platforms.map((platform) => platformViralScore(entry.platformData[platform], platform, allEntries, entry.id)).filter((score) => score > 0);
+  return scores.length ? scores.reduce((sum, score) => sum + score, 0) / scores.length : 0;
+};
 const statusOf = (entry: Entry): { key: StatusKey; label: string } => {
   if (publishedPlatforms(entry).length) return { key: 'published', label: 'Published' };
   if (entry.filmed && entry.edited) return { key: 'ready', label: 'Ready' };
@@ -84,17 +88,18 @@ const safeLink = (value: string) => !value ? '' : /^https?:\/\//i.test(value) ? 
 const storageKey = (brand: Brand) => `content-calendar-entries-${brand}`;
 
 function aggregateAnalytics(entries: Entry[], start: string, end: string, platform: 'all' | Platform): AnalyticsTotals {
-  const totals: AnalyticsTotals = { posts: 0, views: 0, likes: 0, shares: 0, saves: 0, follows: 0, interactions: 0, engagementRate: 0 };
+  const totals: AnalyticsTotals = { posts: 0, views: 0, likes: 0, shares: 0, saves: 0, follows: 0, watchTimeHours: 0, interactions: 0, engagementRate: 0 };
   entries.filter((entry) => entry.date >= start && entry.date <= end).forEach((entry) => {
     const selectedPlatforms = entry.platforms.filter((item) => platform === 'all' || item === platform);
     if (selectedPlatforms.some((item) => Boolean(entry.platformData[item].postUrl))) totals.posts += 1;
     selectedPlatforms.forEach((item) => {
       const data = entry.platformData[item];
-      totals.views += data.views;
-      totals.likes += data.likes;
-      totals.shares += data.shares;
-      totals.saves += data.saves;
-      totals.follows += data.follows;
+      totals.views += platformConsumption(data, item);
+      totals.likes += item === 'YouTube' ? 0 : data.likes;
+      totals.shares += item === 'IG' || item === 'TikTok' ? data.shares : 0;
+      totals.saves += item === 'YouTube' ? 0 : data.saves;
+      totals.follows += platformAudienceGained(data, item);
+      totals.watchTimeHours += item === 'YouTube' ? data.watchTimeHours : 0;
     });
   });
   totals.interactions = totals.likes + totals.shares + totals.saves;
@@ -103,15 +108,9 @@ function aggregateAnalytics(entries: Entry[], start: string, end: string, platfo
 }
 
 const analyticsMetricValue = (totals: AnalyticsTotals, metric: AnalyticsMetric) => totals[metric];
-const platformMetricSamples = (entries: Entry[], start: string, end: string, platform: Platform, metric: AnalyticsMetric) => entries
+const platformRawMetricSamples = (entries: Entry[], start: string, end: string, platform: Platform, metric: PlatformMetricKey) => entries
   .filter((entry) => entry.date >= start && entry.date <= end && entry.platforms.includes(platform) && Boolean(entry.platformData[platform].postUrl))
-  .map((entry) => {
-    const data = entry.platformData[platform];
-    if (metric === 'views') return data.views;
-    if (metric === 'interactions') return data.likes + data.shares + data.saves;
-    if (metric === 'follows') return data.follows;
-    return insightRate(data);
-  });
+  .map((entry) => platformMetricValue(entry.platformData[platform], metric));
 const average = (values: number[]) => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
 const changeValue = (current: number, previous: number) => previous === 0 ? null : ((current - previous) / previous) * 100;
 type ChartPoint = { x: number; y: number; value: number };
@@ -163,10 +162,14 @@ function normalizeEntry(raw: Record<string, unknown>): Entry {
   const data = blankPlatformData();
   const existing = (raw.platformData || raw.platform_data) as Partial<Record<Platform, Partial<Insight>>> | undefined;
   platforms.forEach((platform) => { if (existing?.[platform]) data[platform] = { ...data[platform], ...existing[platform] }; });
+  if (existing?.YouTube && existing.YouTube.subscribersGained === undefined) data.YouTube.subscribersGained = Number(existing.YouTube.follows || 0);
+  if (existing?.Lemon8 && existing.Lemon8.reads === undefined) data.Lemon8.reads = Number(existing.Lemon8.views || 0);
   if (!existing && selected[0]) {
     data[selected[0]] = {
       postUrl: String(raw.postUrl || ''), views: Number(raw.views || 0), likes: Number(raw.likes || 0),
-      shares: Number(raw.shares || 0), saves: Number(raw.saves || 0), follows: Number(raw.follows || 0),
+      shares: Number(raw.shares || 0), saves: Number(raw.saves || 0), follows: Number(raw.follows || 0), watchTimeHours: 0,
+      subscribersGained: selected[0] === 'YouTube' ? Number(raw.follows || 0) : 0,
+      reads: selected[0] === 'Lemon8' ? Number(raw.views || 0) : 0,
     };
   }
   return {
@@ -212,7 +215,6 @@ export default function Home() {
   const [statusFilter, setStatusFilter] = useState<'all' | StatusKey>('all');
   const [analyticsPlatform, setAnalyticsPlatform] = useState<'all' | Platform>('all');
   const [analyticsMetric, setAnalyticsMetric] = useState<AnalyticsMetric>('views');
-  const [analyticsMode, setAnalyticsMode] = useState<AnalyticsMode>('perPost');
   const [platformAnalysisView, setPlatformAnalysisView] = useState<PlatformAnalysisView>('momentum');
   const [analyticsPreset, setAnalyticsPreset] = useState<'last7' | 'last30' | 'custom'>('last7');
   const [analyticsEnd, setAnalyticsEnd] = useState(today);
@@ -381,35 +383,15 @@ export default function Home() {
   const comparisonStart = analyticsDuration ? addDays(comparisonEnd, -(analyticsDuration - 1)) : analyticsStart;
   const analyticsTotals = useMemo(() => aggregateAnalytics(entries, analyticsStart, analyticsEnd, analyticsPlatform), [entries, analyticsStart, analyticsEnd, analyticsPlatform]);
   const comparisonTotals = useMemo(() => aggregateAnalytics(entries, comparisonStart, comparisonEnd, analyticsPlatform), [entries, comparisonStart, comparisonEnd, analyticsPlatform]);
-  const platformMomentum = useMemo(() => platforms.map((platform) => {
-    const currentTotals = aggregateAnalytics(entries, analyticsStart, analyticsEnd, platform);
-    const previousTotals = aggregateAnalytics(entries, comparisonStart, comparisonEnd, platform);
-    const momentumValue = (totals: AnalyticsTotals) => {
-      const value = analyticsMetricValue(totals, analyticsMetric);
-      return analyticsMode === 'perPost' && analyticsMetric !== 'engagementRate'
-        ? totals.posts > 0 ? value / totals.posts : 0
-        : value;
-    };
-    const current = momentumValue(currentTotals);
-    const previous = momentumValue(previousTotals);
-    const hasData = currentTotals.posts > 0 || previousTotals.posts > 0;
-    const isNew = hasData && previous === 0 && current > 0;
-    const delta = analyticsMetric === 'engagementRate'
-      ? current - previous
-      : previous > 0 ? ((current - previous) / previous) * 100 : isNew ? 100 : 0;
-    return { platform, current, previous, delta, isNew, hasData, currentPosts: currentTotals.posts, previousPosts: previousTotals.posts };
-  }).sort((a, b) => b.delta - a.delta), [entries, analyticsStart, analyticsEnd, comparisonStart, comparisonEnd, analyticsMetric, analyticsMode]);
-  const platformMomentumMax = Math.max(1, ...platformMomentum.map((item) => Math.abs(item.delta)));
-  const platformStableThreshold = analyticsMetric === 'engagementRate' ? .5 : 5;
   const opportunityPlatforms = useMemo(() => platforms.map((platform) => {
-    const metrics: AnalyticsMetric[] = ['views', 'interactions', 'follows', 'engagementRate'];
+    const metrics = platformMetrics[platform].map((metric) => metric.key);
     const metricIndexes = metrics.map((metric) => {
-      const currentSamples = platformMetricSamples(entries, analyticsStart, analyticsEnd, platform, metric);
-      const previousSamples = platformMetricSamples(entries, comparisonStart, comparisonEnd, platform, metric);
+      const currentSamples = platformRawMetricSamples(entries, analyticsStart, analyticsEnd, platform, metric);
+      const previousSamples = platformRawMetricSamples(entries, comparisonStart, comparisonEnd, platform, metric);
       const benchmarkValues = Array.from({ length: 4 }, (_, index) => {
         const periodEnd = addDays(analyticsStart, -1 - index * Math.max(1, analyticsDuration));
         const periodStart = addDays(periodEnd, -(Math.max(1, analyticsDuration) - 1));
-        const samples = platformMetricSamples(entries, periodStart, periodEnd, platform, metric);
+        const samples = platformRawMetricSamples(entries, periodStart, periodEnd, platform, metric);
         return samples.length ? average(samples) : null;
       }).filter((value): value is number => value !== null);
       const benchmarkMedian = median(benchmarkValues);
@@ -420,20 +402,23 @@ export default function Home() {
         ? { currentIndex: (current / benchmark) * 100, previousIndex: (previous / benchmark) * 100, benchmarkPeriods: benchmarkValues.length }
         : null;
     }).filter((item): item is { currentIndex: number; previousIndex: number; benchmarkPeriods: number } => Boolean(item));
-    const currentPosts = platformMetricSamples(entries, analyticsStart, analyticsEnd, platform, 'views').length;
-    const previousPosts = platformMetricSamples(entries, comparisonStart, comparisonEnd, platform, 'views').length;
+    const currentPosts = entries.filter((entry) => entry.date >= analyticsStart && entry.date <= analyticsEnd && entry.platforms.includes(platform) && Boolean(entry.platformData[platform].postUrl)).length;
+    const previousPosts = entries.filter((entry) => entry.date >= comparisonStart && entry.date <= comparisonEnd && entry.platforms.includes(platform) && Boolean(entry.platformData[platform].postUrl)).length;
     const performanceIndex = average(metricIndexes.map((item) => item.currentIndex));
     const previousPerformanceIndex = average(metricIndexes.map((item) => item.previousIndex));
     const momentum = performanceIndex - previousPerformanceIndex;
     const isNew = currentPosts > 0 && previousPosts === 0;
     const benchmarkPeriods = metricIndexes.length ? Math.min(...metricIndexes.map((item) => item.benchmarkPeriods)) : 0;
     const hasCoordinates = currentPosts > 0 && previousPosts > 0 && metricIndexes.length >= 2 && benchmarkPeriods >= 2;
-    const lowConfidence = hasCoordinates && (currentPosts < 3 || previousPosts < 3 || benchmarkPeriods < 4 || metricIndexes.length < 4);
+    const lowConfidence = hasCoordinates && (currentPosts < 3 || previousPosts < 3 || benchmarkPeriods < 4 || metricIndexes.length < metrics.length);
     const quadrant = performanceIndex >= 100
       ? momentum >= 0 ? 'scale' : 'protect'
       : momentum >= 0 ? 'test' : 'fix';
-    return { platform, currentPosts, previousPosts, momentum, performanceIndex, contribution: currentPosts, isNew, hasCoordinates, lowConfidence, quadrant, benchmarkPeriods, metricCount: metricIndexes.length };
+    return { platform, currentPosts, previousPosts, momentum, performanceIndex, previousPerformanceIndex, contribution: currentPosts, isNew, hasCoordinates, lowConfidence, quadrant, benchmarkPeriods, metricCount: metricIndexes.length };
   }), [entries, analyticsStart, analyticsEnd, comparisonStart, comparisonEnd, analyticsDuration]);
+  const platformMomentum = opportunityPlatforms.map((item) => ({ platform: item.platform, current: item.performanceIndex, previous: item.previousPerformanceIndex, delta: item.momentum, isNew: item.isNew, hasData: item.hasCoordinates, currentPosts: item.currentPosts, previousPosts: item.previousPosts })).sort((a, b) => b.delta - a.delta);
+  const platformMomentumMax = Math.max(1, ...platformMomentum.map((item) => Math.abs(item.delta)));
+  const platformStableThreshold = 5;
   const opportunityVisible = opportunityPlatforms.filter((item) => item.hasCoordinates);
   const opportunityUnavailable = opportunityPlatforms.filter((item) => !item.hasCoordinates);
   const opportunityMomentumMax = Math.max(25, ...opportunityVisible.map((item) => Math.abs(item.momentum)));
@@ -443,7 +428,7 @@ export default function Home() {
     return priority[a.quadrant] - priority[b.quadrant] || b.performanceIndex - a.performanceIndex;
   });
   const starConclusion = (() => {
-    if (!opportunityVisible.length) return { title: 'Not enough history for a reliable conclusion yet', advice: 'Keep recording platform results. The map needs at least two earlier matching periods and data for at least two of the four composite metrics.' };
+    if (!opportunityVisible.length) return { title: 'Not enough history for a reliable conclusion yet', advice: 'Keep recording platform results. The map needs at least two earlier matching periods and data for at least two of that platform’s selected metrics.' };
     const scale = opportunityVisible.filter((item) => item.quadrant === 'scale').sort((a, b) => b.performanceIndex + b.momentum - (a.performanceIndex + a.momentum))[0];
     const test = opportunityVisible.filter((item) => item.quadrant === 'test').sort((a, b) => b.momentum - a.momentum)[0];
     const protect = opportunityVisible.filter((item) => item.quadrant === 'protect').sort((a, b) => a.momentum - b.momentum)[0];
@@ -493,16 +478,22 @@ export default function Home() {
   const analyticsRangeEntries = useMemo(() => entries.filter((entry) => entry.date >= analyticsStart && entry.date <= analyticsEnd && (analyticsPlatform === 'all' || entry.platforms.includes(analyticsPlatform))), [entries, analyticsStart, analyticsEnd, analyticsPlatform]);
   const topContents = useMemo(() => analyticsRangeEntries.map((entry) => {
     const selectedPlatforms = entry.platforms.filter((platform) => analyticsPlatform === 'all' || platform === analyticsPlatform);
-    const data = selectedPlatforms.map((platform) => entry.platformData[platform]);
-    const views = data.reduce((sum, item) => sum + item.views, 0);
-    const interactions = data.reduce((sum, item) => sum + item.likes + item.shares + item.saves, 0);
-    const follows = data.reduce((sum, item) => sum + item.follows, 0);
-    const rate = views ? (interactions / views) * 100 : 0;
+    const consumption = selectedPlatforms.reduce((sum, platform) => sum + platformConsumption(entry.platformData[platform], platform), 0);
+    const actions = selectedPlatforms.reduce((sum, platform) => sum + platformActions(entry.platformData[platform], platform), 0);
+    const audience = selectedPlatforms.reduce((sum, platform) => sum + platformAudienceGained(entry.platformData[platform], platform), 0);
+    const selectedData = analyticsPlatform === 'all' ? null : entry.platformData[analyticsPlatform];
+    const topMetrics = analyticsPlatform === 'YouTube' && selectedData
+      ? [{ label: 'Views', value: compactMetric.format(selectedData.views) }, { label: 'Watch time', value: `${selectedData.watchTimeHours.toFixed(1)}h` }, { label: 'Subscribers', value: compactMetric.format(selectedData.subscribersGained) }]
+      : analyticsPlatform === 'Lemon8' && selectedData
+        ? [{ label: 'Reads', value: compactMetric.format(selectedData.reads) }, { label: 'Likes', value: compactMetric.format(selectedData.likes) }, { label: 'Saves', value: compactMetric.format(selectedData.saves) }]
+        : analyticsPlatform !== 'all' && selectedData
+          ? [{ label: 'Views', value: compactMetric.format(selectedData.views) }, { label: 'Actions', value: compactMetric.format(platformActions(selectedData, analyticsPlatform)) }, { label: 'Follows', value: compactMetric.format(selectedData.follows) }]
+          : [{ label: 'Views / reads', value: compactMetric.format(consumption) }, { label: 'Actions', value: compactMetric.format(actions) }, { label: 'Audience', value: compactMetric.format(audience) }];
     const score = analyticsPlatform === 'all'
       ? overallViralScore(entry, analyticsRangeEntries)
       : platformViralScore(entry.platformData[analyticsPlatform], analyticsPlatform, analyticsRangeEntries, entry.id);
-    return { entry, selectedPlatforms, views, follows, rate, score, isPublished: selectedPlatforms.some((platform) => Boolean(entry.platformData[platform].postUrl)) };
-  }).filter((item) => item.isPublished).sort((a, b) => b.score - a.score || b.views - a.views).slice(0, 5), [analyticsRangeEntries, analyticsPlatform]);
+    return { entry, selectedPlatforms, consumption, topMetrics, score, isPublished: selectedPlatforms.some((platform) => Boolean(entry.platformData[platform].postUrl)) };
+  }).filter((item) => item.isPublished).sort((a, b) => b.score - a.score || b.consumption - a.consumption).slice(0, 5), [analyticsRangeEntries, analyticsPlatform]);
   const previousAudience = audienceSnapshots.find((item) => item.month === shiftMonth(audienceMonth, -1) && item.platform === audiencePlatform);
   const audienceMonthSnapshots = platforms.map((platform) => audienceSnapshots.find((item) => item.month === audienceMonth && item.platform === platform)).filter((item): item is AudienceSnapshot => Boolean(item));
   const weekPeriods = monthWeekPeriods(audienceMonth);
@@ -772,14 +763,19 @@ export default function Home() {
   const syncLabel = syncState === 'loading' ? 'Connecting…' : syncState === 'saving' ? 'Saving…' : syncState === 'error' ? 'Sync failed' : 'Cloud synced';
   const activeViralScore = platformViralScore(draft.platformData[activePlatform], activePlatform, entries, draft.id);
   const compactNumber = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
-  const analyticsCards = [
-    { label: 'Views', value: compactNumber.format(analyticsTotals.views), current: analyticsTotals.views, previous: comparisonTotals.views },
-    { label: 'Interactions', value: compactNumber.format(analyticsTotals.interactions), current: analyticsTotals.interactions, previous: comparisonTotals.interactions },
-    { label: 'Engagement rate', value: `${analyticsTotals.engagementRate.toFixed(1)}%`, current: analyticsTotals.engagementRate, previous: comparisonTotals.engagementRate },
-    { label: 'Follows', value: compactNumber.format(analyticsTotals.follows), current: analyticsTotals.follows, previous: comparisonTotals.follows },
-    { label: 'Published posts', value: analyticsTotals.posts.toLocaleString(), current: analyticsTotals.posts, previous: comparisonTotals.posts },
-  ];
-  const analyticsMetricLabel = analyticsMetric === 'engagementRate' ? 'Engagement rate' : analyticsMetric[0].toUpperCase() + analyticsMetric.slice(1);
+  const metricCard = (label: string, metric: keyof AnalyticsTotals, hours = false) => ({ label, value: hours ? analyticsTotals[metric].toFixed(1) : compactNumber.format(analyticsTotals[metric]), current: analyticsTotals[metric], previous: comparisonTotals[metric] });
+  const analyticsCards = analyticsPlatform === 'YouTube' ? [metricCard('Views', 'views'), metricCard('Watch time (hours)', 'watchTimeHours', true), metricCard('Subscribers', 'follows'), metricCard('Published posts', 'posts')]
+    : analyticsPlatform === 'Lemon8' ? [metricCard('Reads', 'views'), metricCard('Likes', 'likes'), metricCard('Saves', 'saves'), metricCard('Published posts', 'posts')]
+    : analyticsPlatform === 'IG' || analyticsPlatform === 'TikTok' ? [metricCard('Views', 'views'), metricCard('Interactions', 'interactions'), { label: 'Engagement rate', value: `${analyticsTotals.engagementRate.toFixed(1)}%`, current: analyticsTotals.engagementRate, previous: comparisonTotals.engagementRate }, metricCard('Follows', 'follows'), metricCard('Published posts', 'posts')]
+    : [metricCard('Views / reads', 'views'), metricCard('Engagement actions', 'interactions'), metricCard('Audience gained', 'follows'), metricCard('YouTube watch hours', 'watchTimeHours', true), metricCard('Published posts', 'posts')];
+  const analyticsMetricOptions: { value: AnalyticsMetric; label: string }[] = analyticsPlatform === 'YouTube'
+    ? [{ value: 'views', label: 'Views' }, { value: 'watchTimeHours', label: 'Watch time (hours)' }, { value: 'follows', label: 'Subscribers' }]
+    : analyticsPlatform === 'Lemon8'
+      ? [{ value: 'views', label: 'Reads' }, { value: 'likes', label: 'Likes' }, { value: 'saves', label: 'Saves' }]
+      : analyticsPlatform === 'IG' || analyticsPlatform === 'TikTok'
+        ? [{ value: 'views', label: 'Views' }, { value: 'interactions', label: 'Interactions' }, { value: 'follows', label: 'Follows' }, { value: 'engagementRate', label: 'Engagement rate' }]
+        : [{ value: 'views', label: 'Views / reads' }, { value: 'interactions', label: 'Engagement actions' }, { value: 'follows', label: 'Audience gained' }, { value: 'watchTimeHours', label: 'YouTube watch hours' }];
+  const analyticsMetricLabel = analyticsMetricOptions.find((option) => option.value === analyticsMetric)?.label || analyticsMetricOptions[0].label;
 
   if (authStatus === 'loading') return <main className="auth-shell"><div className="auth-card"><span className="auth-spark">✦</span><h1>Content Flow</h1><p>Connecting your workspace…</p></div></main>;
 
@@ -832,7 +828,7 @@ export default function Home() {
         <div className="summary-card"><span>Scheduled</span><strong>{selectedMonthEntries.length}</strong><small>{summaryMonthLabel} posts</small></div>
         <div className="summary-card"><span>Ready</span><strong>{ready}</strong><small>in {summaryMonthLabel}</small></div>
         <div className="summary-card accent"><span>Published</span><strong>{published}</strong><small>in {summaryMonthLabel}</small></div>
-        <div className="summary-card"><span>Best Viral Score</span><strong>{Math.round(bestScore)}</strong><small>{summaryMonthLabel} · out of 100</small></div>
+        <div className="summary-card"><span>Best Performance Score</span><strong>{Math.round(bestScore)}</strong><small>{summaryMonthLabel} · out of 100</small></div>
       </div>
     </section>
 
@@ -852,16 +848,16 @@ export default function Home() {
         {filteredEntries.length === 0 ? <div className="empty-state"><span>✦</span><h2>{entries.length ? 'Nothing matches yet' : 'Your content starts here'}</h2><p>{entries.length ? 'Try another platform or status filter.' : 'Add your first idea and give it a date.'}</p>{!entries.length && member?.role !== 'viewer' && <button className="primary-button" onClick={() => openNew()}>Add content</button>}</div> : filteredEntries.slice().sort((a,b) => a.date.localeCompare(b.date)).map((entry) => {
           const rate = overallRate(entry); const score = overallViralScore(entry, entries); const status = statusOf(entry);
           const views = totalViews(entry);
-          const interactions = entry.platforms.reduce((sum, platform) => { const item = entry.platformData[platform]; return sum + item.likes + item.shares + item.saves; }, 0);
+          const interactions = entry.platforms.reduce((sum, platform) => sum + platformActions(entry.platformData[platform], platform), 0);
           return <article className="content-card" key={entry.id} onClick={() => openEdit(entry)}>
             <div className="date-block"><strong>{new Date(`${entry.date}T00:00:00`).getDate()}</strong><span>{new Date(`${entry.date}T00:00:00`).toLocaleDateString('en', { month: 'short' })}</span><small>{entry.hour}:{entry.minute}</small></div>
-            <div className="content-main"><div className="card-title-row"><h3>{entry.title}</h3><div className="platforms-mini">{entry.platforms.map((platform) => <span className={entry.platformData[platform].postUrl ? 'posted' : ''} key={platform}>{entry.platformData[platform].postUrl ? '✓ ' : ''}{platform}</span>)}</div></div><div className="status-row"><span className={`status-badge ${status.key}`}>● {status.label}</span><span className={entry.filmed ? 'complete' : ''}>● Filming</span><span className={entry.edited ? 'complete' : ''}>● Editing</span></div><div className="rate-row"><div><span>Viral Score</span><strong>{views ? `${Math.round(score)}/100` : 'No data'}</strong></div><div className="progress"><span style={{ width: `${score}%` }} /></div><small>{views.toLocaleString()} views · {rate.toFixed(1)}% ER · {interactions.toLocaleString()} interactions</small></div></div><span className="edit-arrow">›</span>
+            <div className="content-main"><div className="card-title-row"><h3>{entry.title}</h3><div className="platforms-mini">{entry.platforms.map((platform) => <span className={entry.platformData[platform].postUrl ? 'posted' : ''} key={platform}>{entry.platformData[platform].postUrl ? '✓ ' : ''}{platform}</span>)}</div></div><div className="status-row"><span className={`status-badge ${status.key}`}>● {status.label}</span><span className={entry.filmed ? 'complete' : ''}>● Filming</span><span className={entry.edited ? 'complete' : ''}>● Editing</span></div><div className="rate-row"><div><span>Performance Score</span><strong>{views ? `${Math.round(score)}/100` : 'No data'}</strong></div><div className="progress"><span style={{ width: `${score}%` }} /></div><small>{views.toLocaleString()} views / reads · {rate.toFixed(1)}% action rate · {interactions.toLocaleString()} actions</small></div></div><span className="edit-arrow">›</span>
           </article>;
         })}
       </div> : view === 'insights' ? <section className="analytics-dashboard">
         <div className="analytics-header">
           <div><p className="eyebrow">PERFORMANCE OVERVIEW</p><h2>Content insights</h2><span>Metrics are grouped by each content item’s publish date.</span></div>
-          <select aria-label="Insights platform" value={analyticsPlatform} onChange={(event) => setAnalyticsPlatform(event.target.value as 'all' | Platform)}><option value="all">All platforms</option>{platforms.map((platform) => <option key={platform}>{platform}</option>)}</select>
+          <select aria-label="Insights platform" value={analyticsPlatform} onChange={(event) => { setAnalyticsPlatform(event.target.value as 'all' | Platform); setAnalyticsMetric('views'); }}><option value="all">All platforms</option>{platforms.map((platform) => <option key={platform}>{platform}</option>)}</select>
         </div>
         <div className="analytics-controls">
           <div className="preset-buttons"><button className={analyticsPreset === 'last7' ? 'active' : ''} onClick={() => applyAnalyticsPreset('last7')}>Last week</button><button className={analyticsPreset === 'last30' ? 'active' : ''} onClick={() => applyAnalyticsPreset('last30')}>Last month</button><button className={analyticsPreset === 'custom' ? 'active' : ''} onClick={() => setAnalyticsPreset('custom')}>Custom</button></div>
@@ -875,20 +871,20 @@ export default function Home() {
         })}</div>
         {analyticsPlatform === 'all' && <div className="platform-momentum-card">
           <div className="platform-analysis-tabs"><button type="button" className={platformAnalysisView === 'momentum' ? 'active' : ''} onClick={() => setPlatformAnalysisView('momentum')}>Momentum bars</button><button type="button" className={platformAnalysisView === 'opportunity' ? 'active' : ''} onClick={() => setPlatformAnalysisView('opportunity')}>Opportunity map</button></div>
-          <div className="chart-head momentum-head"><div><span>{platformAnalysisView === 'momentum' ? 'Platform momentum' : 'Platform opportunity map'}</span><small>{platformAnalysisView === 'momentum' ? `Ranked by change versus the previous period · Stable within ${analyticsMetric === 'engagementRate' ? '±0.5pp' : '±5%'}.` : 'One composite index averaging four metrics · Benchmark automatically uses the previous 4 periods matching your selected date range.'}</small></div><div className="momentum-controls">{platformAnalysisView === 'momentum' ? <><span className="momentum-mode" aria-label="Momentum calculation mode"><button type="button" className={analyticsMode === 'total' ? 'active' : ''} onClick={() => setAnalyticsMode('total')}>Total</button><button type="button" className={analyticsMode === 'perPost' ? 'active' : ''} onClick={() => setAnalyticsMode('perPost')}>Per post</button></span><select aria-label="Platform analysis metric" value={analyticsMetric} onChange={(event) => setAnalyticsMetric(event.target.value as AnalyticsMetric)}><option value="views">Views</option><option value="interactions">Interactions</option><option value="follows">Follows</option><option value="engagementRate">Engagement rate</option></select></> : <span className="opportunity-mode">4-metric average</span>}</div></div>
+          <div className="chart-head momentum-head"><div><span>{platformAnalysisView === 'momentum' ? 'Platform momentum' : 'Platform opportunity map'}</span><small>{platformAnalysisView === 'momentum' ? 'Ranked by change in each platform’s own composite index · Stable within ±5 points.' : 'One composite index using only the metrics selected for each platform · Benchmark uses the previous 4 matching periods.'}</small></div><div className="momentum-controls"><span className="opportunity-mode">Platform-specific average</span></div></div>
           {platformAnalysisView === 'momentum' ? <><div className="momentum-axis"><span>Decline</span><i>Stable</i><span>Growth</span></div>
           <div className="momentum-list">{platformMomentum.map((item) => {
             const positive = item.delta >= 0;
             const stable = item.hasData && !item.isNew && Math.abs(item.delta) < platformStableThreshold;
             const lowConfidence = item.hasData && (item.currentPosts < 3 || item.previousPosts < 3);
             const width = item.hasData ? Math.max(2, (Math.abs(item.delta) / platformMomentumMax) * 100) : 0;
-            const formatValue = (value: number) => analyticsMetric === 'engagementRate' ? `${value.toFixed(1)}%` : analyticsMode === 'perPost' ? compactNumber.format(Number(value.toFixed(1))) : compactNumber.format(value);
-            const preciseChange = analyticsMetric === 'engagementRate' ? `${item.delta >= 0 ? '+' : ''}${item.delta.toFixed(1)}pp` : `${item.delta >= 0 ? '+' : ''}${item.delta.toFixed(1)}%`;
+            const formatValue = (value: number) => `${value.toFixed(0)} index`;
+            const preciseChange = `${item.delta >= 0 ? '+' : ''}${item.delta.toFixed(1)} pts`;
             const changeLabel = !item.hasData ? 'No data' : item.isNew ? 'New' : stable ? `Stable · ${preciseChange}` : preciseChange;
             return <button type="button" className="momentum-row" key={item.platform} onClick={() => setAnalyticsPlatform(item.platform)} aria-label={`View ${item.platform} insights`}>
               <span className="momentum-platform"><strong>{item.platform}</strong><small>{item.currentPosts} now · {item.previousPosts} prev{lowConfidence && <em>Low confidence</em>}</small></span>
               <span className="momentum-track"><i className="momentum-stable-band" style={{ width: `${Math.min(100, (platformStableThreshold / platformMomentumMax) * 100)}%` }} /><i className="momentum-zero" />{item.hasData && <b className={stable ? 'stable' : positive ? 'positive' : 'negative'} style={{ width: `${width / 2}%`, [positive ? 'left' : 'right']: '50%' }} />}</span>
-              <span className={`momentum-change ${!item.hasData || stable ? 'neutral' : positive ? 'positive' : 'negative'}`}><strong>{changeLabel}</strong><small>{formatValue(item.previous)} → {formatValue(item.current)}{analyticsMode === 'perPost' && analyticsMetric !== 'engagementRate' ? ' avg/post' : ''}</small></span>
+              <span className={`momentum-change ${!item.hasData || stable ? 'neutral' : positive ? 'positive' : 'negative'}`}><strong>{changeLabel}</strong><small>{formatValue(item.previous)} → {formatValue(item.current)}</small></span>
               <i className="momentum-arrow">›</i>
             </button>;
           })}</div></> : <div className="opportunity-section">
@@ -908,7 +904,7 @@ export default function Home() {
               })}
             </div>
             <div className="opportunity-foot"><span><b>100 index</b> = median of the previous 4 matching periods</span><span>Momentum = current composite index minus previous-period index</span></div>
-            <div className="opportunity-formula"><div><span>ⓘ</span><strong>How this is calculated</strong></div><p><b>Metric index</b> = current period’s per-post result ÷ median result from the previous 4 matching periods × 100.</p><p><b>Composite index</b> = average of Views/post index, Interactions/post index, Follows/post index and Engagement Rate index. If a metric has insufficient history, the available metrics are averaged; at least 2 are required.</p><p><b>Momentum</b> = current composite index − previous-period composite index. <b>Bubble size</b> = posts published in the selected period.</p></div>
+            <div className="opportunity-formula"><div><span>ⓘ</span><strong>How this is calculated</strong></div><p><b>Metric index</b> = current period’s per-post result ÷ median result from the previous 4 matching periods × 100.</p><p><b>Composite index</b> = the average of that platform’s tracked metrics: <b>IG / TikTok</b> use Views, Likes, Shares, Saves and Follows; <b>YouTube</b> uses Views, Watch time and Subscribers; <b>Lemon8</b> uses Reads, Likes and Saves. At least 2 metrics with enough history are required.</p><p><b>Momentum</b> = current composite index − previous-period composite index. <b>Bubble size</b> = posts published in the selected period.</p></div>
             {opportunityRecommendations.length > 0 && <div className="opportunity-conclusions"><div><span>RECOMMENDED ACTIONS</span><h4>What this map is telling you</h4></div>{opportunityRecommendations.map((item) => {
               const icon = item.quadrant === 'scale' ? '🚀' : item.quadrant === 'protect' ? '🛡️' : item.quadrant === 'test' ? '🧪' : '🔧';
               const title = item.quadrant === 'scale' ? 'Scale up' : item.quadrant === 'protect' ? 'Protect performance' : item.quadrant === 'test' ? 'Keep testing' : 'Fix or reduce';
@@ -919,13 +915,13 @@ export default function Home() {
           </div>}
         </div>}
         <div className="analytics-chart-card">
-          <div className="chart-head"><div><span>{analyticsMetricLabel} trend</span><small>{analyticsStart} – {analyticsEnd}{compareAnalytics ? ` · compared with ${comparisonStart} – ${comparisonEnd}` : ''}</small></div><select aria-label="Chart metric" value={analyticsMetric} onChange={(event) => setAnalyticsMetric(event.target.value as AnalyticsMetric)}><option value="views">Views</option><option value="interactions">Interactions</option><option value="follows">Follows</option><option value="engagementRate">Engagement rate</option></select></div>
+          <div className="chart-head"><div><span>{analyticsMetricLabel} trend</span><small>{analyticsStart} – {analyticsEnd}{compareAnalytics ? ` · compared with ${comparisonStart} – ${comparisonEnd}` : ''}</small></div><select aria-label="Chart metric" value={analyticsMetric} onChange={(event) => setAnalyticsMetric(event.target.value as AnalyticsMetric)}>{analyticsMetricOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
           {analyticsBuckets.length ? <><div className="chart-legend"><span className="current">Current period</span>{compareAnalytics && <span className="previous">Previous period</span>}{viralSpikeIndex >= 0 && <span className="spike">Viral spike</span>}</div><div className="line-chart-stage"><div className="line-y-axis">{[1,.75,.5,.25,0].map((ratio) => <span key={ratio}>{chartTickValue(ratio)}</span>)}</div><div className="line-chart-main"><svg className="line-chart" viewBox={`0 0 ${chartWidth} ${chartHeight}`} role="img" aria-label={`${analyticsMetricLabel} trend chart`} preserveAspectRatio="none"><defs><linearGradient id="insightsLine" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stopColor="#ff8a00"/><stop offset=".52" stopColor="#ff3e5f"/><stop offset="1" stopColor="#b622dc"/></linearGradient><linearGradient id="insightsArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#ed3c86" stopOpacity=".22"/><stop offset="1" stopColor="#b622dc" stopOpacity=".015"/></linearGradient></defs>{[0,.25,.5,.75,1].map((ratio) => <line className="line-grid" key={ratio} x1={chartPadding} x2={chartWidth - chartPadding} y1={chartPadding + ratio * (chartHeight - chartPadding * 2)} y2={chartPadding + ratio * (chartHeight - chartPadding * 2)} />)}{currentAreaPath && <path className="line-area" d={currentAreaPath} />}{compareAnalytics && previousChartPath && <path className="line-series previous" d={previousChartPath} />}{currentChartPath && <path className="line-series current" d={currentChartPath} />}{compareAnalytics && previousChartPoints.map((point, index) => <circle className="line-point previous" key={`previous-${index}`} cx={point.x} cy={point.y} r="4"><title>{`${analyticsBuckets[index].label} previous: ${analyticsMetric === 'engagementRate' ? `${point.value.toFixed(1)}%` : point.value.toLocaleString()}`}</title></circle>)}{currentChartPoints.map((point, index) => <g key={`current-${index}`}><circle className="line-point current" cx={point.x} cy={point.y} r={index === viralSpikeIndex ? 6 : 5}><title>{`${analyticsBuckets[index].label}: ${analyticsMetric === 'engagementRate' ? `${point.value.toFixed(1)}%` : point.value.toLocaleString()}`}</title></circle>{index === viralSpikeIndex && <g className="spike-marker"><circle cx={point.x} cy={point.y} r="13"/><rect x={Math.min(chartWidth - 105, Math.max(5, point.x - 44))} y={Math.max(4, point.y - 35)} width="88" height="21" rx="10"/><text x={Math.min(chartWidth - 61, Math.max(49, point.x))} y={Math.max(18, point.y - 21)} textAnchor="middle">Viral spike</text></g>}</g>)}</svg><div className="line-x-axis" style={{ gridTemplateColumns: `repeat(${analyticsBuckets.length}, minmax(0, 1fr))` }}>{analyticsBuckets.map((bucket) => <span key={bucket.label}>{bucket.label}</span>)}</div></div></div></> : <div className="analytics-empty">Choose a valid date range to see your chart.</div>}
         </div>
-        <div className="analytics-breakdown"><div><span>Likes</span><strong>{compactNumber.format(analyticsTotals.likes)}</strong></div><div><span>Shares</span><strong>{compactNumber.format(analyticsTotals.shares)}</strong></div><div><span>Saves</span><strong>{compactNumber.format(analyticsTotals.saves)}</strong></div><div><span>Follows</span><strong>{compactNumber.format(analyticsTotals.follows)}</strong></div></div>
+        <div className="analytics-breakdown">{analyticsPlatform === 'YouTube' ? <><div><span>Views</span><strong>{compactNumber.format(analyticsTotals.views)}</strong></div><div><span>Watch time</span><strong>{analyticsTotals.watchTimeHours.toFixed(1)}h</strong></div><div><span>Subscribers</span><strong>{compactNumber.format(analyticsTotals.follows)}</strong></div></> : analyticsPlatform === 'Lemon8' ? <><div><span>Reads</span><strong>{compactNumber.format(analyticsTotals.views)}</strong></div><div><span>Likes</span><strong>{compactNumber.format(analyticsTotals.likes)}</strong></div><div><span>Saves</span><strong>{compactNumber.format(analyticsTotals.saves)}</strong></div></> : <><div><span>Likes</span><strong>{compactNumber.format(analyticsTotals.likes)}</strong></div><div><span>Shares</span><strong>{compactNumber.format(analyticsTotals.shares)}</strong></div><div><span>Saves</span><strong>{compactNumber.format(analyticsTotals.saves)}</strong></div><div><span>{analyticsPlatform === 'all' ? 'Audience gained' : 'Follows'}</span><strong>{compactNumber.format(analyticsTotals.follows)}</strong></div></>}</div>
         <section className="top-content-section">
-          <div className="top-content-head"><div><span>TOP PERFORMERS</span><h3>Top 5 contents</h3><small>Ranked by Viral Score for {analyticsStart} – {analyticsEnd}</small></div><b>{analyticsPlatform === 'all' ? 'All platforms' : analyticsPlatform}</b></div>
-          {topContents.length ? <div className="top-content-list">{topContents.map((item, index) => <article className="top-content-row" key={item.entry.id} onClick={() => openEdit(item.entry)}><span className={`rank rank-${index + 1}`}>{index + 1}</span><div className="top-content-info"><strong>{item.entry.title}</strong><small>{new Date(`${item.entry.date}T00:00:00`).toLocaleDateString('en', { day: 'numeric', month: 'short', year: 'numeric' })} · {item.selectedPlatforms.join(' · ')}</small></div><div className="top-content-metrics"><span><small>Views</small><b>{compactNumber.format(item.views)}</b></span><span><small>ER</small><b>{item.rate.toFixed(1)}%</b></span><span><small>Follows</small><b>{compactNumber.format(item.follows)}</b></span></div><div className="top-content-score"><strong>{Math.round(item.score)}</strong><small>Viral Score</small><i><span style={{ width: `${item.score}%` }} /></i></div></article>)}</div> : <div className="top-content-empty">No published content with insights in this date range.</div>}
+          <div className="top-content-head"><div><span>TOP PERFORMERS</span><h3>Top 5 contents</h3><small>Ranked by platform-specific Performance Score for {analyticsStart} – {analyticsEnd}</small></div><b>{analyticsPlatform === 'all' ? 'All platforms' : analyticsPlatform}</b></div>
+          {topContents.length ? <div className="top-content-list">{topContents.map((item, index) => <article className="top-content-row" key={item.entry.id} onClick={() => openEdit(item.entry)}><span className={`rank rank-${index + 1}`}>{index + 1}</span><div className="top-content-info"><strong>{item.entry.title}</strong><small>{new Date(`${item.entry.date}T00:00:00`).toLocaleDateString('en', { day: 'numeric', month: 'short', year: 'numeric' })} · {item.selectedPlatforms.join(' · ')}</small></div><div className="top-content-metrics">{item.topMetrics.map((metric) => <span key={metric.label}><small>{metric.label}</small><b>{metric.value}</b></span>)}</div><div className="top-content-score"><strong>{Math.round(item.score)}</strong><small>Performance Score</small><i><span style={{ width: `${item.score}%` }} /></i></div></article>)}</div> : <div className="top-content-empty">No published content with insights in this date range.</div>}
         </section>
       </section> : <section className="audience-dashboard">
         <div className="audience-header">
@@ -975,7 +971,7 @@ export default function Home() {
       <div className="field full"><span>Production status</span><div className="status-picker"><button type="button" className={draft.filmed ? 'selected' : ''} onClick={() => setDraft({ ...draft, filmed: !draft.filmed })}><i>{draft.filmed ? '✓' : ''}</i>Filming complete</button><button type="button" className={draft.edited ? 'selected' : ''} onClick={() => setDraft({ ...draft, edited: !draft.edited })}><i>{draft.edited ? '✓' : ''}</i>Editing complete</button></div></div>
 
       {draft.id && draft.platforms.length > 0 && <section className="publishing-section"><div className="section-title"><div><span>Published posts & insights</span><small>Each platform keeps its own URL and performance.</small></div><b>{publishedPlatforms(draft).length}/{draft.platforms.length} live</b></div><div className="platform-tabs">{draft.platforms.map((platform) => <button type="button" className={activePlatform === platform ? 'active' : ''} key={platform} onClick={() => setActivePlatform(platform)}>{draft.platformData[platform].postUrl ? '✓ ' : ''}{platform}</button>)}</div>
-        {draft.platforms.includes(activePlatform) && <div className="platform-insights"><label className="field"><span>{activePlatform} post URL</span><input type="url" placeholder="Attach after publishing" value={draft.platformData[activePlatform].postUrl} onChange={(event) => updateInsight(activePlatform, { postUrl: event.target.value })} />{draft.platformData[activePlatform].postUrl && <a href={safeLink(draft.platformData[activePlatform].postUrl)} target="_blank" rel="noreferrer">View post ↗</a>}</label><div className="insights"><div className="insights-head"><div><span>{activePlatform} insights</span><small>Compared with your {activePlatform} content median</small></div><strong>{Math.round(activeViralScore)}/100</strong></div><div className="metrics">{(['views','likes','shares','saves','follows'] as const).map((metric) => <label key={metric}><span>{metric}</span><input min="0" type="number" value={draft.platformData[activePlatform][metric] || ''} placeholder="0" onChange={(event) => updateInsight(activePlatform, { [metric]: Math.max(0, Number(event.target.value)) })} /></label>)}</div><div className="formula"><span style={{ width: `${activeViralScore}%` }} /><small>Viral Score · 50% Reach + 50% ER</small></div><p className="er-formula">{insightRate(draft.platformData[activePlatform]).toFixed(1)}% ER = (Likes + Shares + Saves) ÷ Views × 100%</p></div></div>}
+        {draft.platforms.includes(activePlatform) && <div className="platform-insights"><label className="field"><span>{activePlatform} post URL</span><input type="url" placeholder="Attach after publishing" value={draft.platformData[activePlatform].postUrl} onChange={(event) => updateInsight(activePlatform, { postUrl: event.target.value })} />{draft.platformData[activePlatform].postUrl && <a href={safeLink(draft.platformData[activePlatform].postUrl)} target="_blank" rel="noreferrer">View post ↗</a>}</label><div className="insights"><div className="insights-head"><div><span>{activePlatform} insights</span><small>Compared with your {activePlatform} content median</small></div><strong>{Math.round(activeViralScore)}/100</strong></div><div className="metrics">{platformMetrics[activePlatform].map((metric) => <label key={metric.key}><span>{metric.label}</span><input min="0" step={metric.step || 1} type="number" value={draft.platformData[activePlatform][metric.key] || ''} placeholder="0" onChange={(event) => updateInsight(activePlatform, { [metric.key]: Math.max(0, Number(event.target.value)) })} /></label>)}</div><div className="formula"><span style={{ width: `${activeViralScore}%` }} /><small>Performance Score · average vs your content median</small></div><p className="er-formula">Score = average of each tracked metric ÷ its {activePlatform} content median, capped at 100. {activePlatform === 'YouTube' ? 'Subscribers means subscribers gained from this content.' : activePlatform === 'Lemon8' ? 'Only Reads, Likes and Saves are included.' : `${insightRate(draft.platformData[activePlatform]).toFixed(1)}% ER = (Likes + Shares + Saves) ÷ Views × 100%.`}</p></div></div>}
       </section>}
       {!draft.id && <div className="progressive-note"><span>✦</span><p><strong>Keep planning simple.</strong> Post URLs and insights appear after you add this idea to the calendar.</p></div>}
       <div className="editor-actions">{draft.id && <button type="button" className="delete" onClick={() => void removeEntry()}>Delete</button>}<button type="button" className="secondary-button" onClick={() => setShowForm(false)}>Cancel</button><button type="submit" className="primary-button">{draft.id ? 'Save changes' : 'Add to calendar'}</button></div>
