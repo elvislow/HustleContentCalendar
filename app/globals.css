@@ -177,38 +177,8 @@ button { color: inherit; }
 .analytics-kpi > small i { color: var(--muted); font-style: normal; font-weight: 650; }
 .analytics-kpi:nth-child(4) > small i { color: #ffffffb5; }
 .platform-momentum-card { margin-top: 14px; padding: 20px; border: 1px solid var(--line); border-radius: 23px; background: #ffffffdd; box-shadow: 0 20px 55px #71356810; }
-.platform-analysis-tabs { width: fit-content; display: flex; gap: 4px; margin-bottom: 16px; padding: 4px; border: 1px solid var(--line); border-radius: 13px; background: #faf6fb; }
-.platform-analysis-tabs button { border: 0; border-radius: 9px; padding: 8px 12px; background: transparent; color: var(--muted); cursor: pointer; font-size: 8px; font-weight: 900; }
-.platform-analysis-tabs button.active { color: #fff; background: var(--gradient); box-shadow: 0 6px 14px #ad3f9c26; }
 .chart-head .momentum-controls { flex-direction: row; align-items: center; gap: 8px; }
-.momentum-mode { display: flex; gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: 11px; background: #faf6fb; }
-.momentum-mode button { border: 0; border-radius: 8px; padding: 7px 9px; background: transparent; color: var(--muted); cursor: pointer; font-size: 8px; font-weight: 900; white-space: nowrap; }
-.momentum-mode button.active { color: #fff; background: var(--gradient); box-shadow: 0 5px 12px #ad3f9c24; }
 .opportunity-mode { padding: 8px 10px; border: 1px solid #dfd4e4; border-radius: 10px; color: #7f6d89; background: #f7f2f8; font-size: 8px !important; font-weight: 900; white-space: nowrap; }
-.momentum-axis { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin: 17px 122px 5px 130px; color: #9a8aa2; font-size: 7px; font-weight: 850; text-transform: uppercase; letter-spacing: .08em; }
-.momentum-axis span:last-child { text-align: right; }
-.momentum-axis i { min-width: 45px; text-align: center; font-style: normal; }
-.momentum-list { overflow: hidden; border: 1px solid var(--line); border-radius: 17px; }
-.momentum-row { width: 100%; display: grid; grid-template-columns: 115px minmax(220px, 1fr) 102px 18px; gap: 14px; align-items: center; padding: 13px 15px; border: 0; border-bottom: 1px solid var(--line); background: #fff; color: var(--ink); text-align: left; cursor: pointer; transition: background .2s; }
-.momentum-row:last-child { border-bottom: 0; }
-.momentum-row:hover { background: #fff6fb; }
-.momentum-platform, .momentum-change { display: flex; flex-direction: column; gap: 3px; }
-.momentum-platform strong { font-size: 11px; }
-.momentum-platform small, .momentum-change small { color: var(--muted); font-size: 7px; }
-.momentum-platform small em { display: block; margin-top: 2px; color: #b97832; font-style: normal; font-weight: 850; }
-.momentum-track { position: relative; height: 26px; border-radius: 8px; background: linear-gradient(90deg, #fff5f6 0 50%, #f8f1fb 50% 100%); }
-.momentum-stable-band { position: absolute; top: 0; bottom: 0; left: 50%; min-width: 4px; transform: translateX(-50%); border-left: 1px dashed #cfc4d4; border-right: 1px dashed #cfc4d4; background: #eee8f1b8; }
-.momentum-zero { position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: #cdbed5; }
-.momentum-track b { position: absolute; top: 5px; height: 16px; min-width: 2px; transition: width .25s; }
-.momentum-track b.positive { border-radius: 0 7px 7px 0; background: linear-gradient(90deg, #d7479d, #9e36d3); }
-.momentum-track b.negative { border-radius: 7px 0 0 7px; background: linear-gradient(90deg, #dc6978, #ee9b8c); }
-.momentum-track b.stable { border-radius: 7px; background: #a99caf; }
-.momentum-change { text-align: right; }
-.momentum-change strong { font-size: 11px; }
-.momentum-change.positive strong { color: #8a38bb; }
-.momentum-change.negative strong { color: #c94862; }
-.momentum-change.neutral strong { color: var(--muted); }
-.momentum-arrow { color: #aa96b3; text-align: right; font-size: 18px; font-style: normal; }
 .opportunity-section { margin-top: 15px; }
 .opportunity-star { position: relative; overflow: hidden; margin-bottom: 13px; padding: 18px 20px; border: 1px solid #e2c9d9; border-radius: 18px; background: linear-gradient(120deg, #fff5df, #fff1f7 52%, #f3e9ff); box-shadow: 0 13px 30px #9a407614; }
 .opportunity-star::after { content: '★'; position: absolute; top: -26px; right: 18px; color: #ffffff94; font-size: 100px; line-height: 1; pointer-events: none; }
@@ -708,17 +678,7 @@ button { color: inherit; }
   .analytics-kpi { min-height: 112px; }
   .analytics-chart-card { padding: 15px 12px; }
   .platform-momentum-card { padding: 15px 12px; }
-  .platform-analysis-tabs { width: 100%; }
-  .platform-analysis-tabs button { flex: 1; padding-right: 7px; padding-left: 7px; }
   .chart-head .momentum-controls { width: 100%; align-items: stretch; flex-direction: column; }
-  .momentum-mode { width: 100%; }
-  .momentum-mode button { flex: 1; }
-  .momentum-controls select { width: 100%; }
-  .momentum-axis { margin-right: 96px; margin-left: 88px; }
-  .momentum-row { grid-template-columns: 72px minmax(100px, 1fr) 82px 10px; gap: 8px; padding: 11px 9px; }
-  .momentum-platform small { line-height: 1.35; }
-  .momentum-track { height: 22px; }
-  .momentum-track b { top: 4px; height: 14px; }
   .opportunity-key { justify-content: flex-start; }
   .opportunity-key small { width: 100%; margin-left: 0; }
   .opportunity-star { padding: 16px 14px; }
