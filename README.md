@@ -1,6 +1,6 @@
 # Content Flow
 
-A Vercel-ready, multi-brand content calendar for **hustle.** and **The Second Studio**, with Supabase cloud sync, admin-managed email/password accounts, team roles and realtime updates.
+A Vercel-ready, multi-brand content calendar for **hustle.**, **The Second Studio** and **Pots & Pans Culinary Studio**, with separate brand workspaces, Supabase cloud sync, admin-managed email/password accounts, team roles and realtime updates.
 
 The Insights view uses platform-specific performance metrics. Instagram and TikTok use per-content Views, Likes, Shares, Saves and Follows; YouTube uses per-content Views and Subscribers; Lemon8 uses weekly account-level Reads, combined Likes & Saves, and Follows because individual-post performance is unavailable. It supports Last week, Last month, custom ranges, automatic previous-period comparison, percentage change and visual trend charts.
 
@@ -16,7 +16,7 @@ The Audience view stores monthly data for each brand and platform and saves chan
 
 Sign in with that email and temporary password. The first approved admin is `elvis@hustle.com.sg`; it can open **Admin settings** and approve more emails as Admin, Editor or Viewer.
 
-If this project was already installed, run the updated `supabase/setup.sql` once again. It is safe to rerun and creates the Audience tables plus `lemon8_weekly_performance` and their access policies without removing existing content.
+If this project was already installed, run the updated `supabase/setup.sql` once again. It is safe to rerun, adds Pots & Pans to the allowed brands, and creates the Audience tables plus `lemon8_weekly_performance` and their access policies without removing existing content.
 
 ## Add another team member
 

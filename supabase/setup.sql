@@ -19,7 +19,7 @@ create table if not exists public.invites (
 
 create table if not exists public.content_entries (
   id uuid primary key,
-  brand text not null check (brand in ('hustle', 'second-studio')),
+  brand text not null check (brand in ('hustle', 'second-studio', 'pots-pans')),
   publish_date date not null,
   publish_hour text not null,
   publish_minute text not null,
@@ -39,7 +39,7 @@ create index if not exists content_entries_brand_date_idx
 
 create table if not exists public.audience_monthly (
   id uuid primary key default gen_random_uuid(),
-  brand text not null check (brand in ('hustle', 'second-studio')),
+  brand text not null check (brand in ('hustle', 'second-studio', 'pots-pans')),
   platform text not null check (platform in ('IG', 'YouTube', 'Lemon8', 'TikTok')),
   month_key date not null,
   starting_followers bigint not null default 0 check (starting_followers >= 0),
@@ -66,7 +66,7 @@ create index if not exists audience_monthly_brand_month_idx
 
 create table if not exists public.audience_weekly (
   id uuid primary key default gen_random_uuid(),
-  brand text not null check (brand in ('hustle', 'second-studio')),
+  brand text not null check (brand in ('hustle', 'second-studio', 'pots-pans')),
   platform text not null check (platform in ('IG', 'YouTube', 'Lemon8', 'TikTok')),
   month_key date not null,
   week_index integer not null check (week_index between 1 and 5),
@@ -83,7 +83,7 @@ create index if not exists audience_weekly_brand_month_idx
 
 create table if not exists public.lemon8_weekly_performance (
   id uuid primary key default gen_random_uuid(),
-  brand text not null check (brand in ('hustle', 'second-studio')),
+  brand text not null check (brand in ('hustle', 'second-studio', 'pots-pans')),
   week_start date not null,
   reads bigint not null default 0 check (reads >= 0),
   likes_and_saves bigint not null default 0 check (likes_and_saves >= 0),
@@ -109,6 +109,16 @@ end $$;
 
 create index if not exists lemon8_weekly_brand_week_idx
   on public.lemon8_weekly_performance (brand, week_start);
+
+-- Safe upgrade: allow the third brand on existing installations.
+alter table public.content_entries drop constraint if exists content_entries_brand_check;
+alter table public.content_entries add constraint content_entries_brand_check check (brand in ('hustle', 'second-studio', 'pots-pans'));
+alter table public.audience_monthly drop constraint if exists audience_monthly_brand_check;
+alter table public.audience_monthly add constraint audience_monthly_brand_check check (brand in ('hustle', 'second-studio', 'pots-pans'));
+alter table public.audience_weekly drop constraint if exists audience_weekly_brand_check;
+alter table public.audience_weekly add constraint audience_weekly_brand_check check (brand in ('hustle', 'second-studio', 'pots-pans'));
+alter table public.lemon8_weekly_performance drop constraint if exists lemon8_weekly_performance_brand_check;
+alter table public.lemon8_weekly_performance add constraint lemon8_weekly_performance_brand_check check (brand in ('hustle', 'second-studio', 'pots-pans'));
 
 alter table public.members enable row level security;
 alter table public.invites enable row level security;

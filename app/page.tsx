@@ -5,7 +5,7 @@ import type { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 
 type Platform = 'IG' | 'YouTube' | 'Lemon8' | 'TikTok';
-type Brand = 'hustle' | 'second-studio';
+type Brand = 'hustle' | 'second-studio' | 'pots-pans';
 type Role = 'admin' | 'editor' | 'viewer';
 type Member = { id: string; email: string; role: Role; status: 'active' | 'inactive'; created_at?: string };
 type Invite = { email: string; role: Role; status: 'active' | 'inactive'; created_at?: string };
@@ -294,7 +294,7 @@ export default function Home() {
 
   useEffect(() => {
     const preferred = window.localStorage.getItem('content-calendar-brand');
-    if (preferred === 'hustle' || preferred === 'second-studio') setBrand(preferred);
+    if (preferred === 'hustle' || preferred === 'second-studio' || preferred === 'pots-pans') setBrand(preferred);
   }, []);
 
   useEffect(() => {
@@ -880,7 +880,7 @@ export default function Home() {
           <div className="preview-row"><i>12</i><div><strong>Founder story</strong><span>IG · TikTok</span></div><b>Ready</b></div>
           <div className="preview-row"><i>18</i><div><strong>Studio walkthrough</strong><span>YouTube · Lemon8</span></div><b>Editing</b></div>
         </div>
-        <div className="login-benefits"><span>● Two brands</span><span>● One team</span><span>● Live cloud sync</span></div>
+        <div className="login-benefits"><span>● Three brands</span><span>● One team</span><span>● Live cloud sync</span></div>
       </div>
       <div className="login-form-panel">
         <div className="login-form-heading"><span>SECURE WORKSPACE</span><h2>Welcome back.</h2><p>Sign in with the email and password provided by your admin.</p></div>
@@ -898,19 +898,22 @@ export default function Home() {
       <div className="brand-area">
         {brand === 'hustle'
           ? <div className="brand hustle-brand"><span className="logo-crop"><img src="/hustle-logo.png" alt="hustle." /></span><small>Content calendar</small></div>
-          : <div className="brand second-studio-brand"><span className="second-logo-crop"><img src="/second-studio-logo.png" alt="The Second Studio by Hustle" /></span><small>Content calendar</small></div>}
+          : brand === 'second-studio'
+            ? <div className="brand second-studio-brand"><span className="second-logo-crop"><img src="/second-studio-logo.png" alt="The Second Studio by Hustle" /></span><small>Content calendar</small></div>
+            : <div className="brand pots-pans-brand"><span className="pots-pans-logo-crop"><img src="/pots-pans-logo.png" alt="Pots & Pans Culinary Studio" /></span><small>Content calendar</small></div>}
       </div>
       <div className="brand-switch" role="tablist" aria-label="Select brand">
         <button type="button" role="tab" aria-selected={brand === 'hustle'} className={brand === 'hustle' ? 'active' : ''} onClick={() => setBrand('hustle')}>hustle.</button>
         <button type="button" role="tab" aria-selected={brand === 'second-studio'} className={brand === 'second-studio' ? 'active' : ''} onClick={() => setBrand('second-studio')}>The Second Studio</button>
+        <button type="button" role="tab" aria-selected={brand === 'pots-pans'} className={brand === 'pots-pans' ? 'active' : ''} onClick={() => setBrand('pots-pans')}>Pots & Pans</button>
       </div>
       <div className="top-actions"><span className={`sync-pill ${syncState}`}>● {syncLabel}</span>{member?.role === 'admin' && <button className="account-button admin-settings-button" onClick={() => { setShowTeam(true); void refreshTeam(); }}>Admin settings</button>}<button className="account-button user-account" title={`${member?.email} · account settings`} onClick={() => { setShowAccount(true); setAccountError(''); setAccountMessage(''); }}>{member?.email.split('@')[0]} · {member?.role}</button>{member?.role !== 'viewer' && <button className="primary-button" onClick={() => openNew()}><span>＋</span> Add content</button>}</div>
     </header>
 
-    {localImportCount > 0 && member?.role !== 'viewer' && <aside className="import-banner"><div><strong>Bring your existing content to the cloud</strong><span>{localImportCount} item{localImportCount === 1 ? '' : 's'} found on this device for {brand === 'hustle' ? 'hustle.' : 'The Second Studio'}.</span></div><button onClick={() => void importLocalEntries()}>Import to cloud</button></aside>}
+    {localImportCount > 0 && member?.role !== 'viewer' && <aside className="import-banner"><div><strong>Bring your existing content to the cloud</strong><span>{localImportCount} item{localImportCount === 1 ? '' : 's'} found on this device for {brand === 'hustle' ? 'hustle.' : brand === 'second-studio' ? 'The Second Studio' : 'Pots & Pans'}.</span></div><button onClick={() => void importLocalEntries()}>Import to cloud</button></aside>}
 
     <section className="hero">
-      <div><p className="eyebrow">{brand === 'hustle' ? 'HUSTLE CONTENT CALENDAR' : 'THE SECOND STUDIO CONTENT CALENDAR'}</p><h1>Keep every idea moving.</h1><p className="hero-copy">Plan once, publish everywhere, and compare what connects on every platform.</p></div>
+      <div><p className="eyebrow">{brand === 'hustle' ? 'HUSTLE CONTENT CALENDAR' : brand === 'second-studio' ? 'THE SECOND STUDIO CONTENT CALENDAR' : 'POTS & PANS CONTENT CALENDAR'}</p><h1>Keep every idea moving.</h1><p className="hero-copy">Plan once, publish everywhere, and compare what connects on every platform.</p></div>
       <div className="summary-grid">
         <div className="summary-card"><span>Scheduled</span><strong>{selectedMonthEntries.length}</strong><small>{summaryMonthLabel} posts</small></div>
         <div className="summary-card"><span>Ready</span><strong>{ready}</strong><small>in {summaryMonthLabel}</small></div>

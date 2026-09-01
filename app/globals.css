@@ -41,6 +41,10 @@ button { color: inherit; }
 .second-logo-crop { display: block; position: relative; width: 210px; height: 46px; overflow: hidden; flex: 0 0 auto; }
 .second-logo-crop img { position: absolute; width: 210px; height: 210px; max-width: none; left: 0; top: -86px; object-fit: contain; }
 .second-studio-brand > small { color: #6f685e; font-size: 8px; letter-spacing: .15em; text-transform: uppercase; font-weight: 900; border-left: 1px solid #d8d1c7; padding-left: 10px; }
+.pots-pans-brand { gap: 10px; }
+.pots-pans-logo-crop { display: block; position: relative; width: 205px; height: 52px; overflow: hidden; flex: 0 0 auto; }
+.pots-pans-logo-crop img { position: absolute; width: 205px; height: 205px; max-width: none; left: 0; top: -76px; object-fit: contain; }
+.pots-pans-brand > small { color: #7c4b55; font-size: 8px; letter-spacing: .15em; text-transform: uppercase; font-weight: 900; border-left: 1px solid #dfc9ce; padding-left: 10px; }
 .brand-switch { display: flex; gap: 5px; padding: 5px; border: 1px solid #eadff2; border-radius: 14px; background: #fff; box-shadow: 0 8px 22px #67347e0b; }
 .brand-switch button { border: 0; background: transparent; color: #87778f; border-radius: 10px; padding: 9px 13px; cursor: pointer; font-size: 10px; font-weight: 900; white-space: nowrap; transition: .2s; }
 .brand-switch button.active { color: #fff; background: var(--gradient); box-shadow: 0 6px 14px #bb449c2c; }
@@ -633,6 +637,42 @@ button { color: inherit; }
 .app-shell[data-brand="second-studio"] .insights { background: linear-gradient(130deg, #eee8de, #f9f7f2, #e8e0d4); border-color: #d8d0c4; }
 .app-shell[data-brand="second-studio"] .progressive-note { background: linear-gradient(110deg, #eee9e0, #f8f5ef); border-color: #c8bcab; }
 
+.app-shell[data-brand="pots-pans"] {
+  --ink: #301017;
+  --muted: #80656b;
+  --line: #ecd9dd;
+  --green: #97001f;
+  --pale: #faeaed;
+  --cream: #fff9f5;
+  --purple: #760019;
+  --pink: #a40025;
+  --orange: #c88b54;
+  --gradient: linear-gradient(108deg, #680015 0%, #97001f 54%, #c0444e 100%);
+  background: radial-gradient(circle at 8% 12%, #f7e7dc 0, transparent 28%), radial-gradient(circle at 91% 14%, #f4dfe3 0, transparent 30%), radial-gradient(circle at 75% 84%, #f8e9df 0, transparent 24%), #fffaf6;
+}
+.app-shell[data-brand="pots-pans"]::before { border-color: #97001f26; }
+.app-shell[data-brand="pots-pans"] .topbar { background: #fffaf7ef; border-bottom-color: #ead7da; }
+.app-shell[data-brand="pots-pans"] .brand-switch { border-color: #e5cfd4; background: #fffdfb; box-shadow: 0 8px 22px #6d001510; }
+.app-shell[data-brand="pots-pans"] .brand-switch button { color: #835f67; }
+.app-shell[data-brand="pots-pans"] .brand-switch button.active { color: #fff; box-shadow: 0 6px 15px #70001728; }
+.app-shell[data-brand="pots-pans"] .sync-pill.saved,
+.app-shell[data-brand="pots-pans"] .sync-pill.synced { color: #8d001d; background: #faecef; border-color: #e8cdd3; }
+.app-shell[data-brand="pots-pans"] .account-button { color: #6d3541; border-color: #e2cbd0; background: #fffdfb; }
+.app-shell[data-brand="pots-pans"] .eyebrow { color: #97001f; }
+.app-shell[data-brand="pots-pans"] .hero h1 { background: linear-gradient(105deg, #4c0010, #97001f 68%, #c98955); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.app-shell[data-brand="pots-pans"] .summary-card { border-color: #ead7da; box-shadow: 0 16px 40px #6c00120b; }
+.app-shell[data-brand="pots-pans"] .summary-card.accent { box-shadow: 0 18px 35px #78001925; }
+.app-shell[data-brand="pots-pans"] .weekdays { background: linear-gradient(90deg, #f6e5e7, #fff7f2, #f1dadd); }
+.app-shell[data-brand="pots-pans"] .weekdays span { color: #7f3847; }
+.app-shell[data-brand="pots-pans"] .calendar-post.status-published { background: linear-gradient(90deg, #f4dfe3, #fff0e9, #efd6db); color: #71162a; }
+.app-shell[data-brand="pots-pans"] .platforms-mini span { background: linear-gradient(120deg, #f5e2e6, #fff2ec); color: #762337; }
+.app-shell[data-brand="pots-pans"] .status-row .complete { color: #97001f; }
+.app-shell[data-brand="pots-pans"] .editor { background: linear-gradient(145deg, #fff, #fff6f2); }
+.app-shell[data-brand="pots-pans"] .platform-picker button.selected,
+.app-shell[data-brand="pots-pans"] .status-picker button.selected { background: linear-gradient(120deg, #f7e3e6, #fff2ec); color: #70162a; border-color: #c9909c; }
+.app-shell[data-brand="pots-pans"] .insights { background: linear-gradient(130deg, #f5e0e4, #fff8f4, #eed5da); border-color: #dfc5ca; }
+.app-shell[data-brand="pots-pans"] .progressive-note { background: linear-gradient(110deg, #f7e5e7, #fff5ef); border-color: #d6aeb6; }
+
 @media (max-width: 1200px) {
   .topbar { grid-template-columns: 1fr auto; gap: 8px 14px; }
   .brand-switch { grid-column: 1 / -1; justify-self: center; order: 3; }
@@ -743,7 +783,9 @@ button { color: inherit; }
   .logo-crop img { width: 108px; height: 108px; top: -41px; }
   .second-logo-crop { width: 166px; height: 40px; }
   .second-logo-crop img { width: 166px; height: 166px; top: -67px; }
-  .hustle-brand > small, .second-studio-brand > small { display: none; }
+  .pots-pans-logo-crop { width: 158px; height: 42px; }
+  .pots-pans-logo-crop img { width: 158px; height: 158px; top: -58px; }
+  .hustle-brand > small, .second-studio-brand > small, .pots-pans-brand > small { display: none; }
   .brand-switch { width: 100%; }
   .brand-switch button { flex: 1; padding: 8px 7px; }
   .hero h1 { font-size: 43px; }
