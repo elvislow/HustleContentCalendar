@@ -17,8 +17,8 @@ type Entry = {
   platformData: Record<Platform, Insight>;
 };
 type StatusKey = 'idea' | 'editing' | 'ready' | 'published';
-type AnalyticsMetric = 'views' | 'likes' | 'shares' | 'saves' | 'interactions' | 'follows' | 'watchTimeHours' | 'engagementRate';
-type AnalyticsTotals = { posts: number; views: number; likes: number; shares: number; saves: number; follows: number; watchTimeHours: number; interactions: number; engagementRate: number };
+type AnalyticsMetric = 'views' | 'likes' | 'shares' | 'saves' | 'interactions' | 'follows' | 'engagementRate';
+type AnalyticsTotals = { posts: number; views: number; likes: number; shares: number; saves: number; follows: number; interactions: number; engagementRate: number };
 type AudienceSnapshot = {
   id?: string; month: string; platform: Platform; startingFollowers: number; endingFollowers: number;
   reach: number; profileVisits: number; linkClicks: number; nonFollowerReachPct: number;
@@ -32,7 +32,7 @@ const compactMetric = new Intl.NumberFormat('en', { notation: 'compact', maximum
 const platformMetrics: Record<Platform, { key: PlatformMetricKey; label: string; step?: number }[]> = {
   IG: [{ key: 'views', label: 'Views' }, { key: 'likes', label: 'Likes' }, { key: 'shares', label: 'Shares' }, { key: 'saves', label: 'Saves' }, { key: 'follows', label: 'Follows' }],
   TikTok: [{ key: 'views', label: 'Views' }, { key: 'likes', label: 'Likes' }, { key: 'shares', label: 'Shares' }, { key: 'saves', label: 'Saves' }, { key: 'follows', label: 'Follows' }],
-  YouTube: [{ key: 'views', label: 'Views' }, { key: 'watchTimeHours', label: 'Watch time (hours)', step: .1 }, { key: 'subscribersGained', label: 'Subscribers' }],
+  YouTube: [{ key: 'views', label: 'Views' }, { key: 'subscribersGained', label: 'Subscribers' }],
   Lemon8: [{ key: 'reads', label: 'Reads' }, { key: 'likes', label: 'Likes' }, { key: 'saves', label: 'Saves' }],
 };
 const initialAdminEmail = 'elvis@hustle.com.sg';
@@ -87,7 +87,7 @@ const safeLink = (value: string) => !value ? '' : /^https?:\/\//i.test(value) ? 
 const storageKey = (brand: Brand) => `content-calendar-entries-${brand}`;
 
 function aggregateAnalytics(entries: Entry[], start: string, end: string, platform: 'all' | Platform): AnalyticsTotals {
-  const totals: AnalyticsTotals = { posts: 0, views: 0, likes: 0, shares: 0, saves: 0, follows: 0, watchTimeHours: 0, interactions: 0, engagementRate: 0 };
+  const totals: AnalyticsTotals = { posts: 0, views: 0, likes: 0, shares: 0, saves: 0, follows: 0, interactions: 0, engagementRate: 0 };
   entries.filter((entry) => entry.date >= start && entry.date <= end).forEach((entry) => {
     const selectedPlatforms = entry.platforms.filter((item) => platform === 'all' || item === platform);
     if (selectedPlatforms.some((item) => Boolean(entry.platformData[item].postUrl))) totals.posts += 1;
@@ -98,7 +98,6 @@ function aggregateAnalytics(entries: Entry[], start: string, end: string, platfo
       totals.shares += item === 'IG' || item === 'TikTok' ? data.shares : 0;
       totals.saves += item === 'YouTube' ? 0 : data.saves;
       totals.follows += platformAudienceGained(data, item);
-      totals.watchTimeHours += item === 'YouTube' ? data.watchTimeHours : 0;
     });
   });
   totals.interactions = totals.likes + totals.shares + totals.saves;
@@ -478,7 +477,7 @@ export default function Home() {
     const audience = selectedPlatforms.reduce((sum, platform) => sum + platformAudienceGained(entry.platformData[platform], platform), 0);
     const selectedData = analyticsPlatform === 'all' ? null : entry.platformData[analyticsPlatform];
     const topMetrics = analyticsPlatform === 'YouTube' && selectedData
-      ? [{ label: 'Views', value: compactMetric.format(selectedData.views) }, { label: 'Watch time', value: `${selectedData.watchTimeHours.toFixed(1)}h` }, { label: 'Subscribers', value: compactMetric.format(selectedData.subscribersGained) }]
+      ? [{ label: 'Views', value: compactMetric.format(selectedData.views) }, { label: 'Subscribers', value: compactMetric.format(selectedData.subscribersGained) }]
       : analyticsPlatform === 'Lemon8' && selectedData
         ? [{ label: 'Reads', value: compactMetric.format(selectedData.reads) }, { label: 'Likes', value: compactMetric.format(selectedData.likes) }, { label: 'Saves', value: compactMetric.format(selectedData.saves) }]
         : analyticsPlatform !== 'all' && selectedData
@@ -758,18 +757,18 @@ export default function Home() {
   const syncLabel = syncState === 'loading' ? 'Connecting…' : syncState === 'saving' ? 'Saving…' : syncState === 'error' ? 'Sync failed' : 'Cloud synced';
   const activeViralScore = platformViralScore(draft.platformData[activePlatform], activePlatform, entries, draft.id);
   const compactNumber = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
-  const metricCard = (label: string, metric: keyof AnalyticsTotals, hours = false) => ({ label, value: hours ? analyticsTotals[metric].toFixed(1) : compactNumber.format(analyticsTotals[metric]), current: analyticsTotals[metric], previous: comparisonTotals[metric] });
-  const analyticsCards = analyticsPlatform === 'YouTube' ? [metricCard('Views', 'views'), metricCard('Watch time (hours)', 'watchTimeHours', true), metricCard('Subscribers', 'follows'), metricCard('Published posts', 'posts')]
+  const metricCard = (label: string, metric: keyof AnalyticsTotals) => ({ label, value: compactNumber.format(analyticsTotals[metric]), current: analyticsTotals[metric], previous: comparisonTotals[metric] });
+  const analyticsCards = analyticsPlatform === 'YouTube' ? [metricCard('Views', 'views'), metricCard('Subscribers', 'follows'), metricCard('Published posts', 'posts')]
     : analyticsPlatform === 'Lemon8' ? [metricCard('Reads', 'views'), metricCard('Likes', 'likes'), metricCard('Saves', 'saves'), metricCard('Published posts', 'posts')]
     : analyticsPlatform === 'IG' || analyticsPlatform === 'TikTok' ? [metricCard('Views', 'views'), metricCard('Interactions', 'interactions'), { label: 'Engagement rate', value: `${analyticsTotals.engagementRate.toFixed(1)}%`, current: analyticsTotals.engagementRate, previous: comparisonTotals.engagementRate }, metricCard('Follows', 'follows'), metricCard('Published posts', 'posts')]
-    : [metricCard('Views / reads', 'views'), metricCard('Engagement actions', 'interactions'), metricCard('Audience gained', 'follows'), metricCard('YouTube watch hours', 'watchTimeHours', true), metricCard('Published posts', 'posts')];
+    : [metricCard('Views / reads', 'views'), metricCard('Engagement actions', 'interactions'), metricCard('Audience gained', 'follows'), metricCard('Published posts', 'posts')];
   const analyticsMetricOptions: { value: AnalyticsMetric; label: string }[] = analyticsPlatform === 'YouTube'
-    ? [{ value: 'views', label: 'Views' }, { value: 'watchTimeHours', label: 'Watch time (hours)' }, { value: 'follows', label: 'Subscribers' }]
+    ? [{ value: 'views', label: 'Views' }, { value: 'follows', label: 'Subscribers' }]
     : analyticsPlatform === 'Lemon8'
       ? [{ value: 'views', label: 'Reads' }, { value: 'likes', label: 'Likes' }, { value: 'saves', label: 'Saves' }]
       : analyticsPlatform === 'IG' || analyticsPlatform === 'TikTok'
         ? [{ value: 'views', label: 'Views' }, { value: 'interactions', label: 'Interactions' }, { value: 'follows', label: 'Follows' }, { value: 'engagementRate', label: 'Engagement rate' }]
-        : [{ value: 'views', label: 'Views / reads' }, { value: 'interactions', label: 'Engagement actions' }, { value: 'follows', label: 'Audience gained' }, { value: 'watchTimeHours', label: 'YouTube watch hours' }];
+        : [{ value: 'views', label: 'Views / reads' }, { value: 'interactions', label: 'Engagement actions' }, { value: 'follows', label: 'Audience gained' }];
   const analyticsMetricLabel = analyticsMetricOptions.find((option) => option.value === analyticsMetric)?.label || analyticsMetricOptions[0].label;
 
   if (authStatus === 'loading') return <main className="auth-shell"><div className="auth-card"><span className="auth-spark">✦</span><h1>Content Flow</h1><p>Connecting your workspace…</p></div></main>;
@@ -883,7 +882,7 @@ export default function Home() {
               })}
             </div>
             <div className="opportunity-foot"><span><b>100 index</b> = median of the previous 4 matching periods</span><span>Momentum = current composite index minus previous-period index</span></div>
-            <div className="opportunity-formula"><div><span>ⓘ</span><strong>How this is calculated</strong></div><p><b>Metric index</b> = current period’s per-post result ÷ median result from the previous 4 matching periods × 100.</p><p><b>Composite index</b> = the average of that platform’s tracked metrics: <b>IG / TikTok</b> use Views, Likes, Shares, Saves and Follows; <b>YouTube</b> uses Views, Watch time and Subscribers; <b>Lemon8</b> uses Reads, Likes and Saves. At least 2 metrics with enough history are required.</p><p><b>Momentum</b> = current composite index − previous-period composite index. <b>Bubble size</b> = posts published in the selected period.</p></div>
+            <div className="opportunity-formula"><div><span>ⓘ</span><strong>How this is calculated</strong></div><p><b>Metric index</b> = current period’s per-post result ÷ median result from the previous 4 matching periods × 100.</p><p><b>Composite index</b> = the average of that platform’s tracked metrics: <b>IG / TikTok</b> use Views, Likes, Shares, Saves and Follows; <b>YouTube</b> uses Views and Subscribers; <b>Lemon8</b> uses Reads, Likes and Saves. At least 2 metrics with enough history are required.</p><p><b>Momentum</b> = current composite index − previous-period composite index. <b>Bubble size</b> = posts published in the selected period.</p></div>
             {opportunityRecommendations.length > 0 && <div className="opportunity-conclusions"><div><span>RECOMMENDED ACTIONS</span><h4>What this map is telling you</h4></div>{opportunityRecommendations.map((item) => {
               const icon = item.quadrant === 'scale' ? '🚀' : item.quadrant === 'protect' ? '🛡️' : item.quadrant === 'test' ? '🧪' : '🔧';
               const title = item.quadrant === 'scale' ? 'Scale up' : item.quadrant === 'protect' ? 'Protect performance' : item.quadrant === 'test' ? 'Keep testing' : 'Fix or reduce';
@@ -897,7 +896,7 @@ export default function Home() {
           <div className="chart-head"><div><span>{analyticsMetricLabel} trend</span><small>{analyticsStart} – {analyticsEnd}{compareAnalytics ? ` · compared with ${comparisonStart} – ${comparisonEnd}` : ''}</small></div><select aria-label="Chart metric" value={analyticsMetric} onChange={(event) => setAnalyticsMetric(event.target.value as AnalyticsMetric)}>{analyticsMetricOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
           {analyticsBuckets.length ? <><div className="chart-legend"><span className="current">Current period</span>{compareAnalytics && <span className="previous">Previous period</span>}{viralSpikeIndex >= 0 && <span className="spike">Viral spike</span>}</div><div className="line-chart-stage"><div className="line-y-axis">{[1,.75,.5,.25,0].map((ratio) => <span key={ratio}>{chartTickValue(ratio)}</span>)}</div><div className="line-chart-main"><svg className="line-chart" viewBox={`0 0 ${chartWidth} ${chartHeight}`} role="img" aria-label={`${analyticsMetricLabel} trend chart`} preserveAspectRatio="none"><defs><linearGradient id="insightsLine" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stopColor="#ff8a00"/><stop offset=".52" stopColor="#ff3e5f"/><stop offset="1" stopColor="#b622dc"/></linearGradient><linearGradient id="insightsArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#ed3c86" stopOpacity=".22"/><stop offset="1" stopColor="#b622dc" stopOpacity=".015"/></linearGradient></defs>{[0,.25,.5,.75,1].map((ratio) => <line className="line-grid" key={ratio} x1={chartPadding} x2={chartWidth - chartPadding} y1={chartPadding + ratio * (chartHeight - chartPadding * 2)} y2={chartPadding + ratio * (chartHeight - chartPadding * 2)} />)}{currentAreaPath && <path className="line-area" d={currentAreaPath} />}{compareAnalytics && previousChartPath && <path className="line-series previous" d={previousChartPath} />}{currentChartPath && <path className="line-series current" d={currentChartPath} />}{compareAnalytics && previousChartPoints.map((point, index) => <circle className="line-point previous" key={`previous-${index}`} cx={point.x} cy={point.y} r="4"><title>{`${analyticsBuckets[index].label} previous: ${analyticsMetric === 'engagementRate' ? `${point.value.toFixed(1)}%` : point.value.toLocaleString()}`}</title></circle>)}{currentChartPoints.map((point, index) => <g key={`current-${index}`}><circle className="line-point current" cx={point.x} cy={point.y} r={index === viralSpikeIndex ? 6 : 5}><title>{`${analyticsBuckets[index].label}: ${analyticsMetric === 'engagementRate' ? `${point.value.toFixed(1)}%` : point.value.toLocaleString()}`}</title></circle>{index === viralSpikeIndex && <g className="spike-marker"><circle cx={point.x} cy={point.y} r="13"/><rect x={Math.min(chartWidth - 105, Math.max(5, point.x - 44))} y={Math.max(4, point.y - 35)} width="88" height="21" rx="10"/><text x={Math.min(chartWidth - 61, Math.max(49, point.x))} y={Math.max(18, point.y - 21)} textAnchor="middle">Viral spike</text></g>}</g>)}</svg><div className="line-x-axis" style={{ gridTemplateColumns: `repeat(${analyticsBuckets.length}, minmax(0, 1fr))` }}>{analyticsBuckets.map((bucket) => <span key={bucket.label}>{bucket.label}</span>)}</div></div></div></> : <div className="analytics-empty">Choose a valid date range to see your chart.</div>}
         </div>
-        <div className="analytics-breakdown">{analyticsPlatform === 'YouTube' ? <><div><span>Views</span><strong>{compactNumber.format(analyticsTotals.views)}</strong></div><div><span>Watch time</span><strong>{analyticsTotals.watchTimeHours.toFixed(1)}h</strong></div><div><span>Subscribers</span><strong>{compactNumber.format(analyticsTotals.follows)}</strong></div></> : analyticsPlatform === 'Lemon8' ? <><div><span>Reads</span><strong>{compactNumber.format(analyticsTotals.views)}</strong></div><div><span>Likes</span><strong>{compactNumber.format(analyticsTotals.likes)}</strong></div><div><span>Saves</span><strong>{compactNumber.format(analyticsTotals.saves)}</strong></div></> : <><div><span>Likes</span><strong>{compactNumber.format(analyticsTotals.likes)}</strong></div><div><span>Shares</span><strong>{compactNumber.format(analyticsTotals.shares)}</strong></div><div><span>Saves</span><strong>{compactNumber.format(analyticsTotals.saves)}</strong></div><div><span>{analyticsPlatform === 'all' ? 'Audience gained' : 'Follows'}</span><strong>{compactNumber.format(analyticsTotals.follows)}</strong></div></>}</div>
+        <div className="analytics-breakdown">{analyticsPlatform === 'YouTube' ? <><div><span>Views</span><strong>{compactNumber.format(analyticsTotals.views)}</strong></div><div><span>Subscribers</span><strong>{compactNumber.format(analyticsTotals.follows)}</strong></div></> : analyticsPlatform === 'Lemon8' ? <><div><span>Reads</span><strong>{compactNumber.format(analyticsTotals.views)}</strong></div><div><span>Likes</span><strong>{compactNumber.format(analyticsTotals.likes)}</strong></div><div><span>Saves</span><strong>{compactNumber.format(analyticsTotals.saves)}</strong></div></> : <><div><span>Likes</span><strong>{compactNumber.format(analyticsTotals.likes)}</strong></div><div><span>Shares</span><strong>{compactNumber.format(analyticsTotals.shares)}</strong></div><div><span>Saves</span><strong>{compactNumber.format(analyticsTotals.saves)}</strong></div><div><span>{analyticsPlatform === 'all' ? 'Audience gained' : 'Follows'}</span><strong>{compactNumber.format(analyticsTotals.follows)}</strong></div></>}</div>
         <section className="top-content-section">
           <div className="top-content-head"><div><span>TOP PERFORMERS</span><h3>Top 5 contents</h3><small>Ranked by platform-specific Performance Score for {analyticsStart} – {analyticsEnd}</small></div><b>{analyticsPlatform === 'all' ? 'All platforms' : analyticsPlatform}</b></div>
           {topContents.length ? <div className="top-content-list">{topContents.map((item, index) => <article className="top-content-row" key={item.entry.id} onClick={() => openEdit(item.entry)}><span className={`rank rank-${index + 1}`}>{index + 1}</span><div className="top-content-info"><strong>{item.entry.title}</strong><small>{new Date(`${item.entry.date}T00:00:00`).toLocaleDateString('en', { day: 'numeric', month: 'short', year: 'numeric' })} · {item.selectedPlatforms.join(' · ')}</small></div><div className="top-content-metrics">{item.topMetrics.map((metric) => <span key={metric.label}><small>{metric.label}</small><b>{metric.value}</b></span>)}</div><div className="top-content-score"><strong>{Math.round(item.score)}</strong><small>Performance Score</small><i><span style={{ width: `${item.score}%` }} /></i></div></article>)}</div> : <div className="top-content-empty">No published content with insights in this date range.</div>}
