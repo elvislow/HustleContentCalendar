@@ -81,11 +81,28 @@ create table if not exists public.audience_weekly (
 create index if not exists audience_weekly_brand_month_idx
   on public.audience_weekly (brand, month_key, platform);
 
+create table if not exists public.lemon8_weekly_performance (
+  id uuid primary key default gen_random_uuid(),
+  brand text not null check (brand in ('hustle', 'second-studio')),
+  week_start date not null,
+  reads bigint not null default 0 check (reads >= 0),
+  likes bigint not null default 0 check (likes >= 0),
+  saves bigint not null default 0 check (saves >= 0),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  updated_by uuid references auth.users(id),
+  unique (brand, week_start)
+);
+
+create index if not exists lemon8_weekly_brand_week_idx
+  on public.lemon8_weekly_performance (brand, week_start);
+
 alter table public.members enable row level security;
 alter table public.invites enable row level security;
 alter table public.content_entries enable row level security;
 alter table public.audience_monthly enable row level security;
 alter table public.audience_weekly enable row level security;
+alter table public.lemon8_weekly_performance enable row level security;
 
 create or replace function public.current_member_role()
 returns text
@@ -244,12 +261,30 @@ drop policy if exists "weekly audience editor delete" on public.audience_weekly;
 create policy "weekly audience editor delete" on public.audience_weekly for delete to authenticated
 using (public.current_member_role() in ('admin', 'editor'));
 
+drop policy if exists "lemon8 weekly member read" on public.lemon8_weekly_performance;
+create policy "lemon8 weekly member read" on public.lemon8_weekly_performance for select to authenticated
+using (public.current_member_role() in ('admin', 'editor', 'viewer'));
+
+drop policy if exists "lemon8 weekly editor create" on public.lemon8_weekly_performance;
+create policy "lemon8 weekly editor create" on public.lemon8_weekly_performance for insert to authenticated
+with check (public.current_member_role() in ('admin', 'editor') and updated_by = auth.uid());
+
+drop policy if exists "lemon8 weekly editor update" on public.lemon8_weekly_performance;
+create policy "lemon8 weekly editor update" on public.lemon8_weekly_performance for update to authenticated
+using (public.current_member_role() in ('admin', 'editor'))
+with check (public.current_member_role() in ('admin', 'editor') and updated_by = auth.uid());
+
+drop policy if exists "lemon8 weekly editor delete" on public.lemon8_weekly_performance;
+create policy "lemon8 weekly editor delete" on public.lemon8_weekly_performance for delete to authenticated
+using (public.current_member_role() in ('admin', 'editor'));
+
 grant usage on schema public to authenticated;
 grant select, update, delete on public.members to authenticated;
 grant select, insert, update, delete on public.invites to authenticated;
 grant select, insert, update, delete on public.content_entries to authenticated;
 grant select, insert, update, delete on public.audience_monthly to authenticated;
 grant select, insert, update, delete on public.audience_weekly to authenticated;
+grant select, insert, update, delete on public.lemon8_weekly_performance to authenticated;
 revoke execute on function public.bootstrap_member() from public, anon;
 revoke execute on function public.current_member_role() from public, anon;
 grant execute on function public.bootstrap_member() to authenticated;
@@ -259,6 +294,7 @@ grant execute on function public.current_member_role() to authenticated;
 alter table public.content_entries replica identity full;
 alter table public.audience_monthly replica identity full;
 alter table public.audience_weekly replica identity full;
+alter table public.lemon8_weekly_performance replica identity full;
 
 do $$
 begin
@@ -267,6 +303,16 @@ begin
     where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'content_entries'
   ) then
     alter publication supabase_realtime add table public.content_entries;
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'lemon8_weekly_performance'
+  ) then
+    alter publication supabase_realtime add table public.lemon8_weekly_performance;
   end if;
 end $$;
 

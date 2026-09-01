@@ -164,6 +164,27 @@ button { color: inherit; }
 .date-range i { padding-bottom: 10px; color: #ad9bb4; font-size: 10px; font-style: normal; }
 .compare-toggle { display: flex; align-items: center; gap: 8px; padding-bottom: 9px; color: #66526f; cursor: pointer; font-size: 9px; font-weight: 850; white-space: nowrap; }
 .compare-toggle input { accent-color: var(--pink); }
+.lemon8-weekly-card { margin: 0 0 18px; padding: 18px; border: 1px solid #e7d8bd; border-radius: 20px; background: linear-gradient(135deg, #fffdf5, #fff8ed); box-shadow: 0 14px 35px #8e69220d; }
+.lemon8-weekly-head { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; margin-bottom: 14px; }
+.lemon8-weekly-head span { color: #a66c23; font-size: 8px; font-weight: 950; letter-spacing: .12em; }
+.lemon8-weekly-head h3 { margin: 4px 0; font-size: 17px; }
+.lemon8-weekly-head p { max-width: 720px; margin: 0; color: var(--muted); font-size: 9px; line-height: 1.5; }
+.lemon8-weekly-head > b { padding: 7px 9px; border-radius: 10px; color: #8b651e; background: #f7e8c8; font-size: 8px; white-space: nowrap; }
+.lemon8-weekly-table { overflow-x: auto; overflow-y: hidden; border: 1px solid #eadfc9; border-radius: 14px; background: #fff; }
+.lemon8-weekly-row { display: grid; grid-template-columns: 1.25fr repeat(3, minmax(90px, 1fr)) 82px; gap: 10px; align-items: center; padding: 10px 12px; border-bottom: 1px solid #eee5d4; }
+.lemon8-weekly-row:last-child { border-bottom: 0; }
+.lemon8-weekly-row.labels { color: #9b896c; background: #fffaf0; font-size: 7px; font-weight: 900; text-transform: uppercase; letter-spacing: .07em; }
+.lemon8-week-label { display: flex; gap: 4px; align-items: baseline; }
+.lemon8-week-label strong { font-size: 10px; }
+.lemon8-week-label small { color: var(--muted); font-size: 8px; }
+.lemon8-weekly-row label input { width: 100%; min-width: 0; padding: 9px; border: 1px solid #e8dcc6; border-radius: 9px; outline: none; color: var(--ink); background: #fff; font: inherit; font-size: 10px; }
+.lemon8-weekly-row label input:focus { border-color: #d8a954; box-shadow: 0 0 0 3px #f5d9992c; }
+.lemon8-post-count { text-align: center; font-size: 12px; }
+.lemon8-weekly-foot { display: flex; justify-content: space-between; gap: 14px; align-items: center; margin-top: 13px; }
+.lemon8-weekly-foot > span { color: var(--muted); font-size: 8px; }
+.lemon8-ranking-note { gap: 5px; align-content: center; }
+.lemon8-ranking-note strong { color: var(--ink); font-size: 11px; }
+.lemon8-ranking-note span { max-width: 620px; text-align: center; font-size: 9px; line-height: 1.5; }
 .analytics-kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 11px; }
 .analytics-kpi { min-height: 130px; display: flex; flex-direction: column; padding: 17px; border: 1px solid var(--line); border-radius: 20px; background: #ffffffd9; box-shadow: 0 15px 38px #75366b0c; }
 .analytics-kpi:nth-child(4) { color: #fff; border: 0; background: var(--gradient); box-shadow: 0 17px 35px #ad3f9c30; }
@@ -514,6 +535,10 @@ button { color: inherit; }
 .platform-tabs button.active { background: var(--gradient); color: #fff; border-color: transparent; box-shadow: 0 7px 16px #bd43952c; }
 .platform-insights { border: 1px solid #ebdff0; background: #fff; border-radius: 16px; padding: 16px; }
 .platform-insights .insights { margin-top: 14px; }
+.lemon8-post-note { margin-top: 14px; padding: 15px 16px; border: 1px solid #eadfc9; border-radius: 14px; background: #fffaf0; }
+.lemon8-post-note span { display: block; color: #a66c23; font-size: 8px; font-weight: 950; text-transform: uppercase; letter-spacing: .1em; }
+.lemon8-post-note strong { display: block; margin-top: 4px; font-size: 12px; }
+.lemon8-post-note p { margin: 5px 0 0; color: var(--muted); font-size: 9px; line-height: 1.5; }
 .progressive-note { display: flex; align-items: center; gap: 12px; border: 1px dashed #d9c1e5; background: linear-gradient(110deg, #f8f2ff, #fff4f9); border-radius: 14px; padding: 13px 15px; margin-top: 19px; }
 .progressive-note > span { color: var(--pink); font-size: 18px; }
 .progressive-note p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
@@ -627,6 +652,10 @@ button { color: inherit; }
   .login-form-panel { padding: 46px 38px; }
   .analytics-header { align-items: flex-start; }
   .analytics-controls { grid-template-columns: 1fr; align-items: start; }
+  .lemon8-weekly-head, .lemon8-weekly-foot { align-items: stretch; flex-direction: column; }
+  .lemon8-weekly-row { min-width: 420px; grid-template-columns: 88px repeat(3, minmax(62px, 1fr)) 58px; gap: 6px; padding: 9px 7px; }
+  .lemon8-week-label { align-items: flex-start; flex-direction: column; }
+  .lemon8-weekly-row label input { padding: 8px 5px; }
   .date-range { justify-self: start; }
   .compare-toggle { grid-column: auto; }
   .analytics-kpis { grid-template-columns: repeat(2, 1fr); }
