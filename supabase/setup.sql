@@ -86,13 +86,26 @@ create table if not exists public.lemon8_weekly_performance (
   brand text not null check (brand in ('hustle', 'second-studio')),
   week_start date not null,
   reads bigint not null default 0 check (reads >= 0),
-  likes bigint not null default 0 check (likes >= 0),
-  saves bigint not null default 0 check (saves >= 0),
+  likes_and_saves bigint not null default 0 check (likes_and_saves >= 0),
+  follows bigint not null default 0 check (follows >= 0),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   updated_by uuid references auth.users(id),
   unique (brand, week_start)
 );
+
+-- Safe upgrade for projects that created the earlier weekly table version.
+alter table public.lemon8_weekly_performance
+  add column if not exists likes_and_saves bigint not null default 0 check (likes_and_saves >= 0),
+  add column if not exists follows bigint not null default 0 check (follows >= 0);
+
+do $$
+begin
+  if exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'lemon8_weekly_performance' and column_name = 'likes')
+     and exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'lemon8_weekly_performance' and column_name = 'saves') then
+    execute 'update public.lemon8_weekly_performance set likes_and_saves = likes + saves where likes_and_saves = 0';
+  end if;
+end $$;
 
 create index if not exists lemon8_weekly_brand_week_idx
   on public.lemon8_weekly_performance (brand, week_start);
