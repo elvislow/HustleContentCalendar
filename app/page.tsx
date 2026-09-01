@@ -899,15 +899,16 @@ export default function Home() {
               <i className="opportunity-x-axis" /><i className="opportunity-y-axis" />
               <span className="opportunity-axis-label top">High performance</span><span className="opportunity-axis-label bottom">Low performance</span><span className="opportunity-axis-label left">Decline</span><span className="opportunity-axis-label right">Growth</span>
               {opportunityVisible.map((item) => {
-                const left = 50 + (Math.max(-opportunityMomentumMax, Math.min(opportunityMomentumMax, item.momentum)) / opportunityMomentumMax) * 43;
+                const left = 50 + (Math.max(-opportunityMomentumMax, Math.min(opportunityMomentumMax, item.momentum)) / opportunityMomentumMax) * 34;
                 const boundedIndex = Math.max(20, Math.min(180, item.performanceIndex));
-                const top = 50 - ((boundedIndex - 100) / 80) * 43;
+                const top = 50 - ((boundedIndex - 100) / 80) * 34;
                 const size = 50 + Math.sqrt(item.contribution / opportunityContributionMax) * 30;
                 const momentumLabel = `${item.momentum >= 0 ? '+' : ''}${item.momentum.toFixed(0)} pts`;
                 return <button type="button" className={`opportunity-bubble ${item.quadrant}${item.lowConfidence ? ' low-confidence' : ''}`} style={{ left: `${left}%`, top: `${top}%`, width: `${size}px`, height: `${size}px` }} key={item.platform} onClick={() => setAnalyticsPlatform(item.platform)} aria-label={`${item.platform}: performance index ${Math.round(item.performanceIndex)}, momentum ${momentumLabel}`}><strong>{item.platform}</strong><small>{Math.round(item.performanceIndex)} index</small><em>{momentumLabel}</em>{item.lowConfidence && <i>Low confidence</i>}</button>;
               })}
             </div>
             <div className="opportunity-foot"><span><b>100 index</b> = median of the previous 4 matching periods</span><span>Momentum = current composite index minus previous-period index</span></div>
+            <div className="opportunity-formula"><div><span>ⓘ</span><strong>How this is calculated</strong></div><p><b>Metric index</b> = current period’s per-post result ÷ median result from the previous 4 matching periods × 100.</p><p><b>Composite index</b> = average of Views/post index, Interactions/post index, Follows/post index and Engagement Rate index. If a metric has insufficient history, the available metrics are averaged; at least 2 are required.</p><p><b>Momentum</b> = current composite index − previous-period composite index. <b>Bubble size</b> = posts published in the selected period.</p></div>
             {opportunityRecommendations.length > 0 && <div className="opportunity-conclusions"><div><span>RECOMMENDED ACTIONS</span><h4>What this map is telling you</h4></div>{opportunityRecommendations.map((item) => {
               const icon = item.quadrant === 'scale' ? '🚀' : item.quadrant === 'protect' ? '🛡️' : item.quadrant === 'test' ? '🧪' : '🔧';
               const title = item.quadrant === 'scale' ? 'Scale up' : item.quadrant === 'protect' ? 'Protect performance' : item.quadrant === 'test' ? 'Keep testing' : 'Fix or reduce';

@@ -254,6 +254,12 @@ button { color: inherit; }
 .opportunity-bubble > i { position: absolute; top: calc(100% + 3px); left: 50%; transform: translateX(-50%); color: #a2682e; font-size: 6px; font-style: normal; font-weight: 900; white-space: nowrap; }
 .opportunity-foot { display: flex; justify-content: space-between; gap: 12px; padding: 8px 3px 0; color: #96869f; font-size: 7px; }
 .opportunity-foot b { color: #705d7a; }
+.opportunity-formula { margin-top: 11px; padding: 13px 15px; border: 1px solid #e3d8e8; border-radius: 15px; background: #faf7fb; color: #77677f; }
+.opportunity-formula > div { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; color: #5f4c68; }
+.opportunity-formula > div span { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 7px; color: #8c3baa; background: #eee4f3; font-size: 9px; }
+.opportunity-formula > div strong { font-size: 9px; }
+.opportunity-formula p { margin: 4px 0 0; font-size: 7px; line-height: 1.55; }
+.opportunity-formula p b { color: #66536f; }
 .opportunity-conclusions { margin-top: 14px; overflow: hidden; border: 1px solid #dfd1e5; border-radius: 17px; background: #fff; }
 .opportunity-conclusions > div { padding: 13px 14px 10px; background: linear-gradient(120deg, #fff7ef, #fff5fa, #f8f1ff); }
 .opportunity-conclusions > div span { color: var(--pink); font-size: 7px; font-weight: 900; letter-spacing: .13em; }
