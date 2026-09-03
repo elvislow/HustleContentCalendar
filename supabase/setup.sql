@@ -40,7 +40,7 @@ create index if not exists content_entries_brand_date_idx
 create table if not exists public.audience_monthly (
   id uuid primary key default gen_random_uuid(),
   brand text not null check (brand in ('hustle', 'second-studio', 'pots-pans')),
-  platform text not null check (platform in ('IG', 'YouTube', 'Lemon8', 'TikTok')),
+  platform text not null check (platform in ('IG', 'YouTube', 'Lemon8', 'TikTok', 'FB')),
   month_key date not null,
   starting_followers bigint not null default 0 check (starting_followers >= 0),
   ending_followers bigint not null default 0 check (ending_followers >= 0),
@@ -67,7 +67,7 @@ create index if not exists audience_monthly_brand_month_idx
 create table if not exists public.audience_weekly (
   id uuid primary key default gen_random_uuid(),
   brand text not null check (brand in ('hustle', 'second-studio', 'pots-pans')),
-  platform text not null check (platform in ('IG', 'YouTube', 'Lemon8', 'TikTok')),
+  platform text not null check (platform in ('IG', 'YouTube', 'Lemon8', 'TikTok', 'FB')),
   month_key date not null,
   week_index integer not null check (week_index between 1 and 5),
   total_follows bigint not null default 0 check (total_follows >= 0),
@@ -119,6 +119,12 @@ alter table public.audience_weekly drop constraint if exists audience_weekly_bra
 alter table public.audience_weekly add constraint audience_weekly_brand_check check (brand in ('hustle', 'second-studio', 'pots-pans'));
 alter table public.lemon8_weekly_performance drop constraint if exists lemon8_weekly_performance_brand_check;
 alter table public.lemon8_weekly_performance add constraint lemon8_weekly_performance_brand_check check (brand in ('hustle', 'second-studio', 'pots-pans'));
+
+-- Safe upgrade: Facebook is available for Pots & Pans audience reporting.
+alter table public.audience_monthly drop constraint if exists audience_monthly_platform_check;
+alter table public.audience_monthly add constraint audience_monthly_platform_check check (platform in ('IG', 'YouTube', 'Lemon8', 'TikTok', 'FB'));
+alter table public.audience_weekly drop constraint if exists audience_weekly_platform_check;
+alter table public.audience_weekly add constraint audience_weekly_platform_check check (platform in ('IG', 'YouTube', 'Lemon8', 'TikTok', 'FB'));
 
 alter table public.members enable row level security;
 alter table public.invites enable row level security;

@@ -2,7 +2,7 @@
 
 A Vercel-ready, multi-brand content calendar for **hustle.**, **The Second Studio** and **Pots & Pans Culinary Studio**, with separate brand workspaces, Supabase cloud sync, admin-managed email/password accounts, team roles and realtime updates.
 
-The Insights view uses platform-specific performance metrics. Instagram and TikTok use per-content Views, Likes, Comments, Shares, Saves and Follows, and calculate Comment to View Ratio as Comments ÷ Views × 100; YouTube uses per-content Views and Subscribers; Lemon8 uses weekly account-level Reads, combined Likes & Saves, and Follows because individual-post performance is unavailable. It supports Last week, Last month, custom ranges, automatic previous-period comparison, percentage change and visual trend charts.
+The Insights view uses platform-specific performance metrics. Instagram and TikTok use per-content Views, Likes, Comments, Shares, Saves and Follows, and calculate Comment to View Ratio as Comments ÷ Views × 100; Pots & Pans also has a Facebook channel using the same metrics; YouTube uses per-content Views and Subscribers; Lemon8 uses weekly account-level Reads, combined Likes & Saves, and Follows because individual-post performance is unavailable. It supports Last week, Last month, custom ranges, automatic previous-period comparison, percentage change and visual trend charts.
 
 The Audience view stores monthly data for each brand and platform and saves changes automatically. Weekly rows accept account-level Total Follows and Unfollows and calculate Net Growth. Cumulative Content-attributed Follows are shown separately in a monthly post ranking and are never subtracted from account-level growth. The view also calculates follower growth, profile and link conversion, compares the previous month and produces automatic monthly observations.
 
@@ -16,7 +16,7 @@ The Audience view stores monthly data for each brand and platform and saves chan
 
 Sign in with that email and temporary password. The first approved admin is `elvis@hustle.com.sg`; it can open **Admin settings** and approve more emails as Admin, Editor or Viewer.
 
-If this project was already installed, run the updated `supabase/setup.sql` once again. It is safe to rerun, adds Pots & Pans to the allowed brands, and creates the Audience tables plus `lemon8_weekly_performance` and their access policies without removing existing content.
+If this project was already installed, run the updated `supabase/setup.sql` once again. It is safe to rerun, adds Pots & Pans to the allowed brands, enables Facebook audience reporting, and creates the Audience tables plus `lemon8_weekly_performance` and their access policies without removing existing content.
 
 ## Add another team member
 

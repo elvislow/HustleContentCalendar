@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 
-type Platform = 'IG' | 'YouTube' | 'Lemon8' | 'TikTok';
+type Platform = 'IG' | 'YouTube' | 'Lemon8' | 'TikTok' | 'FB';
 type Brand = 'hustle' | 'second-studio' | 'pots-pans';
 type Role = 'admin' | 'editor' | 'viewer';
 type Member = { id: string; email: string; role: Role; status: 'active' | 'inactive'; created_at?: string };
@@ -28,23 +28,25 @@ type AudienceSnapshot = {
 type AudienceWeek = { id?: string; month: string; platform: Platform; weekIndex: number; totalFollows: number; unfollows: number };
 type Lemon8Week = { id?: string; weekStart: string; reads: number; likesAndSaves: number; follows: number };
 
-const platforms: Platform[] = ['IG', 'YouTube', 'Lemon8', 'TikTok'];
+const platforms: Platform[] = ['IG', 'YouTube', 'Lemon8', 'TikTok', 'FB'];
 const compactMetric = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
 const platformMetrics: Record<Platform, { key: PlatformMetricKey; label: string; step?: number }[]> = {
   IG: [{ key: 'views', label: 'Views' }, { key: 'likes', label: 'Likes' }, { key: 'comments', label: 'Comments' }, { key: 'shares', label: 'Shares' }, { key: 'saves', label: 'Saves' }, { key: 'follows', label: 'Follows' }],
   TikTok: [{ key: 'views', label: 'Views' }, { key: 'likes', label: 'Likes' }, { key: 'comments', label: 'Comments' }, { key: 'shares', label: 'Shares' }, { key: 'saves', label: 'Saves' }, { key: 'follows', label: 'Follows' }],
+  FB: [{ key: 'views', label: 'Views' }, { key: 'likes', label: 'Likes' }, { key: 'comments', label: 'Comments' }, { key: 'shares', label: 'Shares' }, { key: 'saves', label: 'Saves' }, { key: 'follows', label: 'Follows' }],
   YouTube: [{ key: 'views', label: 'Views' }, { key: 'subscribersGained', label: 'Subscribers' }],
   Lemon8: [],
 };
 const opportunityMetricKeys: Record<Platform, PlatformMetricKey[]> = {
   IG: ['views', 'likes', 'comments', 'shares', 'saves', 'follows'], TikTok: ['views', 'likes', 'comments', 'shares', 'saves', 'follows'],
+  FB: ['views', 'likes', 'comments', 'shares', 'saves', 'follows'],
   YouTube: ['views', 'subscribersGained'], Lemon8: ['reads', 'likes', 'follows'],
 };
 const initialAdminEmail = 'elvis@hustle.com.sg';
 const hours = Array.from({ length: 24 }, (_, index) => String(index).padStart(2, '0'));
 const minutes = ['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'];
 const blankInsight = (): Insight => ({ postUrl: '', views: 0, likes: 0, comments: 0, shares: 0, saves: 0, follows: 0, watchTimeHours: 0, subscribersGained: 0, reads: 0 });
-const blankPlatformData = (): Record<Platform, Insight> => ({ IG: blankInsight(), YouTube: blankInsight(), Lemon8: blankInsight(), TikTok: blankInsight() });
+const blankPlatformData = (): Record<Platform, Insight> => ({ IG: blankInsight(), YouTube: blankInsight(), Lemon8: blankInsight(), TikTok: blankInsight(), FB: blankInsight() });
 const today = () => { const date = new Date(); const offset = date.getTimezoneOffset(); return new Date(date.getTime() - offset * 60000).toISOString().slice(0, 10); };
 const addDays = (value: string, amount: number) => { const date = new Date(`${value}T12:00:00`); date.setDate(date.getDate() + amount); return date.toISOString().slice(0, 10); };
 const mondayOf = (value: string) => { const date = new Date(`${value}T12:00:00`); const day = date.getDay(); date.setDate(date.getDate() - (day === 0 ? 6 : day - 1)); return date.toISOString().slice(0, 10); };
@@ -59,6 +61,7 @@ const inclusiveDays = (start: string, end: string) => Math.max(0, Math.round((ne
 const emptyEntry = (): Entry => ({ id: '', date: today(), hour: '12', minute: '00', title: '', platforms: [], referenceUrl: '', filmed: false, edited: false, platformData: blankPlatformData() });
 const insightRate = (data: Insight) => data.views ? ((data.likes + data.comments + data.shares + data.saves) / data.views) * 100 : 0;
 const commentViewRatio = (data: Insight) => data.views ? (data.comments / data.views) * 100 : 0;
+const isEngagementPlatform = (platform: Platform) => platform === 'IG' || platform === 'TikTok' || platform === 'FB';
 const platformMetricValue = (data: Insight, key: PlatformMetricKey) => Number(data[key] || 0);
 const platformConsumption = (data: Insight, platform: Platform) => platform === 'Lemon8' ? 0 : data.views;
 const platformActions = (data: Insight, platform: Platform) => platform === 'YouTube' || platform === 'Lemon8' ? 0 : data.likes + data.comments + data.saves + data.shares;
@@ -107,8 +110,8 @@ function aggregateAnalytics(entries: Entry[], start: string, end: string, platfo
       const data = entry.platformData[item];
       totals.views += platformConsumption(data, item);
       totals.likes += item === 'YouTube' || item === 'Lemon8' ? 0 : data.likes;
-      totals.comments += item === 'IG' || item === 'TikTok' ? data.comments : 0;
-      totals.shares += item === 'IG' || item === 'TikTok' ? data.shares : 0;
+      totals.comments += isEngagementPlatform(item) ? data.comments : 0;
+      totals.shares += isEngagementPlatform(item) ? data.shares : 0;
       totals.saves += item === 'YouTube' || item === 'Lemon8' ? 0 : data.saves;
       totals.follows += platformAudienceGained(data, item);
     });
@@ -295,6 +298,7 @@ export default function Home() {
   const audienceDirty = useRef(false);
   const audienceSaveTimer = useRef<number | null>(null);
   const [month, setMonth] = useState(() => { const now = new Date(); return new Date(now.getFullYear(), now.getMonth(), 1); });
+  const brandPlatforms = useMemo(() => brand === 'pots-pans' ? platforms : platforms.filter((platform) => platform !== 'FB'), [brand]);
 
   useEffect(() => {
     const preferred = window.localStorage.getItem('content-calendar-brand');
@@ -342,6 +346,9 @@ export default function Home() {
     setEntries([]);
     setPlatformFilter('all');
     setStatusFilter('all');
+    setAnalyticsPlatform('all');
+    setAnalyticsMetric('views');
+    setAudiencePlatform('IG');
     setShowForm(false);
 
     async function loadCloudEntries() {
@@ -450,7 +457,7 @@ export default function Home() {
     const posts = entries.filter((entry) => entry.date >= weekStart && entry.date <= weekEnd && entry.platforms.includes('Lemon8') && Boolean(entry.platformData.Lemon8.postUrl)).length;
     return { ...existing, weekEnd, posts };
   });
-  const opportunityPlatforms = useMemo(() => platforms.map((platform) => {
+  const opportunityPlatforms = useMemo(() => brandPlatforms.map((platform) => {
     const metrics = opportunityMetricKeys[platform];
     const metricSamples = (start: string, end: string, metric: PlatformMetricKey) => platform === 'Lemon8'
       ? lemon8WeeksInRange(lemon8Weeks, start, end).map((week) => metric === 'reads' ? week.reads : metric === 'likes' ? week.likesAndSaves : week.follows)
@@ -487,7 +494,7 @@ export default function Home() {
       ? momentum >= 0 ? 'scale' : 'protect'
       : momentum >= 0 ? 'test' : 'fix';
     return { platform, currentPosts, previousPosts, currentObservations, previousObservations, momentum, performanceIndex, previousPerformanceIndex, contribution: currentPosts, isNew, hasCoordinates, lowConfidence, quadrant, benchmarkPeriods, metricCount: metricIndexes.length };
-  }), [entries, lemon8Weeks, analyticsStart, analyticsEnd, comparisonStart, comparisonEnd, analyticsDuration]);
+  }), [brandPlatforms, entries, lemon8Weeks, analyticsStart, analyticsEnd, comparisonStart, comparisonEnd, analyticsDuration]);
   const opportunityVisible = opportunityPlatforms.filter((item) => item.hasCoordinates);
   const opportunityUnavailable = opportunityPlatforms.filter((item) => !item.hasCoordinates);
   const opportunityMomentumMax = Math.max(25, ...opportunityVisible.map((item) => Math.abs(item.momentum)));
@@ -563,7 +570,7 @@ export default function Home() {
     return { entry, selectedPlatforms, consumption, topMetrics, score, isPublished: selectedPlatforms.some((platform) => Boolean(entry.platformData[platform].postUrl)) };
   }).filter((item) => item.isPublished).sort((a, b) => b.score - a.score || b.consumption - a.consumption).slice(0, 5), [analyticsRangeEntries, analyticsPlatform]);
   const previousAudience = audienceSnapshots.find((item) => item.month === shiftMonth(audienceMonth, -1) && item.platform === audiencePlatform);
-  const audienceMonthSnapshots = platforms.map((platform) => audienceSnapshots.find((item) => item.month === audienceMonth && item.platform === platform)).filter((item): item is AudienceSnapshot => Boolean(item));
+  const audienceMonthSnapshots = brandPlatforms.map((platform) => audienceSnapshots.find((item) => item.month === audienceMonth && item.platform === platform)).filter((item): item is AudienceSnapshot => Boolean(item));
   const weekPeriods = monthWeekPeriods(audienceMonth);
   const weeklyAudienceBreakdown = weekPeriods.map((period) => {
     const weekly = audienceWeekDrafts.find((item) => item.weekIndex === period.weekIndex) || { month: audienceMonth, platform: audiencePlatform, weekIndex: period.weekIndex, totalFollows: 0, unfollows: 0 };
@@ -858,13 +865,13 @@ export default function Home() {
   const metricCard = (label: string, metric: keyof AnalyticsTotals) => ({ label, value: compactNumber.format(analyticsTotals[metric]), current: analyticsTotals[metric], previous: comparisonTotals[metric] });
   const analyticsCards = analyticsPlatform === 'YouTube' ? [metricCard('Views', 'views'), metricCard('Subscribers', 'follows'), metricCard('Published posts', 'posts')]
     : analyticsPlatform === 'Lemon8' ? [metricCard('Reads', 'views'), metricCard('Likes & Saves', 'interactions'), metricCard('Follows', 'follows'), metricCard('Published posts', 'posts')]
-    : analyticsPlatform === 'IG' || analyticsPlatform === 'TikTok' ? [metricCard('Views', 'views'), metricCard('Interactions', 'interactions'), { label: 'Engagement rate', value: `${analyticsTotals.engagementRate.toFixed(1)}%`, current: analyticsTotals.engagementRate, previous: comparisonTotals.engagementRate }, { label: 'Comment to View Ratio', value: `${analyticsTotals.commentViewRatio.toFixed(2)}%`, current: analyticsTotals.commentViewRatio, previous: comparisonTotals.commentViewRatio }, metricCard('Follows', 'follows'), metricCard('Published posts', 'posts')]
+    : analyticsPlatform === 'IG' || analyticsPlatform === 'TikTok' || analyticsPlatform === 'FB' ? [metricCard('Views', 'views'), metricCard('Interactions', 'interactions'), { label: 'Engagement rate', value: `${analyticsTotals.engagementRate.toFixed(1)}%`, current: analyticsTotals.engagementRate, previous: comparisonTotals.engagementRate }, { label: 'Comment to View Ratio', value: `${analyticsTotals.commentViewRatio.toFixed(2)}%`, current: analyticsTotals.commentViewRatio, previous: comparisonTotals.commentViewRatio }, metricCard('Follows', 'follows'), metricCard('Published posts', 'posts')]
     : [metricCard('Views / reads', 'views'), metricCard('Engagement actions', 'interactions'), metricCard('Audience gained', 'follows'), metricCard('Published posts', 'posts')];
   const analyticsMetricOptions: { value: AnalyticsMetric; label: string }[] = analyticsPlatform === 'YouTube'
     ? [{ value: 'views', label: 'Views' }, { value: 'follows', label: 'Subscribers' }]
     : analyticsPlatform === 'Lemon8'
       ? [{ value: 'views', label: 'Reads' }, { value: 'interactions', label: 'Likes & Saves' }, { value: 'follows', label: 'Follows' }]
-      : analyticsPlatform === 'IG' || analyticsPlatform === 'TikTok'
+      : analyticsPlatform === 'IG' || analyticsPlatform === 'TikTok' || analyticsPlatform === 'FB'
         ? [{ value: 'views', label: 'Views' }, { value: 'comments', label: 'Comments' }, { value: 'interactions', label: 'Interactions' }, { value: 'follows', label: 'Follows' }, { value: 'engagementRate', label: 'Engagement rate' }, { value: 'commentViewRatio', label: 'Comment to View Ratio' }]
         : [{ value: 'views', label: 'Views / reads' }, { value: 'interactions', label: 'Engagement actions' }, { value: 'follows', label: 'Audience gained' }];
   const analyticsMetricLabel = analyticsMetricOptions.find((option) => option.value === analyticsMetric)?.label || analyticsMetricOptions[0].label;
@@ -932,7 +939,7 @@ export default function Home() {
         <div className="view-tabs"><button className={view === 'calendar' ? 'active' : ''} onClick={() => setView('calendar')}>Calendar</button><button className={view === 'list' ? 'active' : ''} onClick={() => setView('list')}>Content list</button><button className={view === 'insights' ? 'active' : ''} onClick={() => setView('insights')}>Insights</button><button className={view === 'audience' ? 'active' : ''} onClick={() => setView('audience')}>Audience</button></div>
         {view === 'calendar' && <div className="month-nav"><button aria-label="Previous month" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}>←</button><strong>{month.toLocaleDateString('en', { month: 'long', year: 'numeric' })}</strong><button aria-label="Next month" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}>→</button></div>}
       </div>
-      {(view === 'calendar' || view === 'list') && <div className="filters"><span>Show</span><select aria-label="Filter by platform" value={platformFilter} onChange={(event) => setPlatformFilter(event.target.value as 'all' | Platform)}><option value="all">All platforms</option>{platforms.map((platform) => <option key={platform}>{platform}</option>)}</select><select aria-label="Filter by status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as 'all' | StatusKey)}><option value="all">All statuses</option><option value="idea">Idea / Filming</option><option value="editing">Editing</option><option value="ready">Ready</option><option value="published">Published</option></select><small>{filteredEntries.length} content item{filteredEntries.length === 1 ? '' : 's'}</small></div>}
+      {(view === 'calendar' || view === 'list') && <div className="filters"><span>Show</span><select aria-label="Filter by platform" value={platformFilter} onChange={(event) => setPlatformFilter(event.target.value as 'all' | Platform)}><option value="all">All platforms</option>{brandPlatforms.map((platform) => <option key={platform}>{platform}</option>)}</select><select aria-label="Filter by status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as 'all' | StatusKey)}><option value="all">All statuses</option><option value="idea">Idea / Filming</option><option value="editing">Editing</option><option value="ready">Ready</option><option value="published">Published</option></select><small>{filteredEntries.length} content item{filteredEntries.length === 1 ? '' : 's'}</small></div>}
 
       {view === 'calendar' ? <div className="calendar-wrap">
         <div className="weekdays">{['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((day) => <span key={day}>{day}</span>)}</div>
@@ -952,7 +959,7 @@ export default function Home() {
       </div> : view === 'insights' ? <section className="analytics-dashboard">
         <div className="analytics-header">
           <div><p className="eyebrow">PERFORMANCE OVERVIEW</p><h2>Content insights</h2><span>Metrics are grouped by each content item’s publish date.</span></div>
-          <select aria-label="Insights platform" value={analyticsPlatform} onChange={(event) => { setAnalyticsPlatform(event.target.value as 'all' | Platform); setAnalyticsMetric('views'); }}><option value="all">All platforms</option>{platforms.map((platform) => <option key={platform}>{platform}</option>)}</select>
+          <select aria-label="Insights platform" value={analyticsPlatform} onChange={(event) => { setAnalyticsPlatform(event.target.value as 'all' | Platform); setAnalyticsMetric('views'); }}><option value="all">All platforms</option>{brandPlatforms.map((platform) => <option key={platform}>{platform}</option>)}</select>
         </div>
         <div className="analytics-controls">
           <div className="preset-buttons"><button className={analyticsPreset === 'last7' ? 'active' : ''} onClick={() => applyAnalyticsPreset('last7')}>Last week</button><button className={analyticsPreset === 'last30' ? 'active' : ''} onClick={() => applyAnalyticsPreset('last30')}>Last month</button><button className={analyticsPreset === 'custom' ? 'active' : ''} onClick={() => setAnalyticsPreset('custom')}>Custom</button></div>
@@ -989,7 +996,7 @@ export default function Home() {
               })}
             </div>
             <div className="opportunity-foot"><span><b>100 index</b> = median of the previous 4 matching periods</span><span>Momentum = current composite index minus previous-period index</span></div>
-            <div className="opportunity-formula"><div><span>ⓘ</span><strong>How this is calculated</strong></div><p><b>Metric index</b> = current result ÷ median result from the previous 4 matching periods × 100. IG, TikTok and YouTube use per-post results; Lemon8 uses weekly account totals.</p><p><b>Composite index</b> = the average of that platform’s tracked metrics: <b>IG / TikTok</b> use Views, Likes, Comments, Shares, Saves and Follows; <b>YouTube</b> uses Views and Subscribers; <b>Lemon8</b> uses weekly Reads, combined Likes & Saves, and Follows. At least 2 metrics with enough history are required. Comment to View Ratio is shown separately and is not added again to the composite.</p><p><b>Momentum</b> = current composite index − previous-period composite index. <b>Bubble size</b> = posts published in the selected period.</p></div>
+            <div className="opportunity-formula"><div><span>ⓘ</span><strong>How this is calculated</strong></div><p><b>Metric index</b> = current result ÷ median result from the previous 4 matching periods × 100. IG, TikTok, Facebook and YouTube use per-post results; Lemon8 uses weekly account totals.</p><p><b>Composite index</b> = the average of that platform’s tracked metrics: <b>IG / TikTok / FB</b> use Views, Likes, Comments, Shares, Saves and Follows; <b>YouTube</b> uses Views and Subscribers; <b>Lemon8</b> uses weekly Reads, combined Likes & Saves, and Follows. At least 2 metrics with enough history are required. Comment to View Ratio is shown separately and is not added again to the composite.</p><p><b>Momentum</b> = current composite index − previous-period composite index. <b>Bubble size</b> = posts published in the selected period.</p></div>
             {opportunityRecommendations.length > 0 && <div className="opportunity-conclusions"><div><span>RECOMMENDED ACTIONS</span><h4>What this map is telling you</h4></div>{opportunityRecommendations.map((item) => {
               const icon = item.quadrant === 'scale' ? '🚀' : item.quadrant === 'protect' ? '🛡️' : item.quadrant === 'test' ? '🧪' : '🔧';
               const title = item.quadrant === 'scale' ? 'Scale up' : item.quadrant === 'protect' ? 'Protect performance' : item.quadrant === 'test' ? 'Keep testing' : 'Fix or reduce';
@@ -1013,7 +1020,7 @@ export default function Home() {
           <div><p className="eyebrow">MONTHLY AUDIENCE INTELLIGENCE</p><h2>Know who is growing with you.</h2><span>Enter monthly audience data for each platform. Content Flow saves automatically and calculates the story behind the numbers.</span></div>
           <label><span>Reporting month</span><input type="month" value={audienceMonth} max={currentMonth()} onChange={(event) => void changeAudienceMonth(event.target.value)} /></label>
         </div>
-        <div className="audience-platforms">{platforms.map((platform) => { const item = audienceSnapshots.find((record) => record.month === audienceMonth && record.platform === platform); return <button type="button" className={audiencePlatform === platform ? 'active' : ''} key={platform} onClick={() => void changeAudiencePlatform(platform)}><span>{platform}</span><strong>{item ? `${audienceGrowth(item) >= 0 ? '+' : ''}${audienceGrowth(item).toFixed(1)}%` : 'Add data'}</strong><small>{item ? `${audienceNewFollowers(item) >= 0 ? '+' : ''}${audienceNewFollowers(item).toLocaleString()} followers` : audienceMonth}</small></button>; })}</div>
+        <div className="audience-platforms">{brandPlatforms.map((platform) => { const item = audienceSnapshots.find((record) => record.month === audienceMonth && record.platform === platform); return <button type="button" className={audiencePlatform === platform ? 'active' : ''} key={platform} onClick={() => void changeAudiencePlatform(platform)}><span>{platform}</span><strong>{item ? `${audienceGrowth(item) >= 0 ? '+' : ''}${audienceGrowth(item).toFixed(1)}%` : 'Add data'}</strong><small>{item ? `${audienceNewFollowers(item) >= 0 ? '+' : ''}${audienceNewFollowers(item).toLocaleString()} followers` : audienceMonth}</small></button>; })}</div>
         <div className="audience-kpis">
           <article><span>Follower growth</span><strong>{audienceGrowthRate >= 0 ? '+' : ''}{audienceGrowthRate.toFixed(1)}%</strong><small>{audienceNew >= 0 ? '+' : ''}{audienceNew.toLocaleString()} net followers</small></article>
           <article><span>Follow conversion</span><strong>{followConversion.toFixed(2)}%</strong><small>new followers ÷ reach</small></article>
@@ -1051,12 +1058,12 @@ export default function Home() {
       <div className="editor-head"><div><p className="eyebrow">{draft.id ? 'EDIT CONTENT' : 'NEW CONTENT'}</p><h2>{draft.id ? 'Update your post' : 'Plan a new post'}</h2>{draft.id && <span className={`editor-status ${statusOf(draft).key}`}>{statusOf(draft).label}</span>}</div><button type="button" className="close" onClick={() => setShowForm(false)}>×</button></div>
       <label className="field full"><span>Content topic</span><input autoFocus required placeholder="Type your content idea..." value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></label>
       <div className="date-time-row"><label className="field"><span>Publish date</span><input type="date" required value={draft.date} onChange={(event) => setDraft({ ...draft, date: event.target.value })} /></label><div className="field"><span>Publish time</span><div className="time-select"><select aria-label="Hour" value={draft.hour} onChange={(event) => setDraft({ ...draft, hour: event.target.value })}>{hours.map((hour) => <option key={hour}>{hour}</option>)}</select><b>:</b><select aria-label="Minute" value={draft.minute} onChange={(event) => setDraft({ ...draft, minute: event.target.value })}>{minutes.map((minute) => <option key={minute}>{minute}</option>)}</select></div></div></div>
-      <div className="field full"><span>Platforms</span><div className="platform-picker">{platforms.map((platform) => <button type="button" className={draft.platforms.includes(platform) ? 'selected' : ''} key={platform} onClick={() => togglePlatform(platform)}><i>{draft.platforms.includes(platform) ? '✓' : '+'}</i>{platform}</button>)}</div></div>
+      <div className="field full"><span>Platforms</span><div className="platform-picker">{brandPlatforms.map((platform) => <button type="button" className={draft.platforms.includes(platform) ? 'selected' : ''} key={platform} onClick={() => togglePlatform(platform)}><i>{draft.platforms.includes(platform) ? '✓' : '+'}</i>{platform}</button>)}</div></div>
       <label className="field full"><span>Reference video URL</span><input type="url" placeholder="https://..." value={draft.referenceUrl} onChange={(event) => setDraft({ ...draft, referenceUrl: event.target.value })} />{draft.referenceUrl && <a href={safeLink(draft.referenceUrl)} target="_blank" rel="noreferrer">Open reference ↗</a>}</label>
       <div className="field full"><span>Production status</span><div className="status-picker"><button type="button" className={draft.filmed ? 'selected' : ''} onClick={() => setDraft({ ...draft, filmed: !draft.filmed })}><i>{draft.filmed ? '✓' : ''}</i>Filming complete</button><button type="button" className={draft.edited ? 'selected' : ''} onClick={() => setDraft({ ...draft, edited: !draft.edited })}><i>{draft.edited ? '✓' : ''}</i>Editing complete</button></div></div>
 
       {(draft.id || draft.edited) && draft.platforms.length > 0 && <section className="publishing-section"><div className="section-title"><div><span>Published posts & insights</span><small>Each platform keeps its own URL and performance.</small></div><b>{publishedPlatforms(draft).length}/{draft.platforms.length} live</b></div><div className="platform-tabs">{draft.platforms.map((platform) => <button type="button" className={activePlatform === platform ? 'active' : ''} key={platform} onClick={() => setActivePlatform(platform)}>{draft.platformData[platform].postUrl ? '✓ ' : ''}{platform}</button>)}</div>
-        {draft.platforms.includes(activePlatform) && <div className="platform-insights"><label className="field"><span>{activePlatform} post URL</span><input type="url" placeholder="Attach after publishing" value={draft.platformData[activePlatform].postUrl} onChange={(event) => updateInsight(activePlatform, { postUrl: event.target.value })} />{draft.platformData[activePlatform].postUrl && <a href={safeLink(draft.platformData[activePlatform].postUrl)} target="_blank" rel="noreferrer">View post ↗</a>}</label>{activePlatform === 'Lemon8' ? <div className="lemon8-post-note"><span>Weekly data</span><strong>No individual performance entry needed</strong><p>Reads, combined Likes & Saves, and Follows are entered once per week in Insights → Lemon8. This post link is still used to count how many Lemon8 posts were published.</p></div> : <div className="insights"><div className="insights-head"><div><span>{activePlatform} insights</span><small>Compared with your {activePlatform} content median</small></div><strong>{Math.round(activeViralScore)}/100</strong></div><div className="metrics">{platformMetrics[activePlatform].map((metric) => <label key={metric.key}><span>{metric.label}</span><input min="0" step={metric.step || 1} type="number" value={draft.platformData[activePlatform][metric.key] || ''} placeholder="0" onChange={(event) => updateInsight(activePlatform, { [metric.key]: Math.max(0, Number(event.target.value)) })} /></label>)}</div><div className="formula"><span style={{ width: `${activeViralScore}%` }} /><small>Performance Score · average vs your content median</small></div><p className="er-formula">Score = average of each tracked metric ÷ its {activePlatform} content median, capped at 100. {activePlatform === 'YouTube' ? 'Subscribers means subscribers gained from this content.' : `${insightRate(draft.platformData[activePlatform]).toFixed(1)}% ER = (Likes + Comments + Shares + Saves) ÷ Views × 100%.`}</p>{(activePlatform === 'IG' || activePlatform === 'TikTok') && <p className="er-formula comment-ratio-formula"><b>{commentViewRatio(draft.platformData[activePlatform]).toFixed(2)}% Comment to View Ratio</b> = Comments ÷ Views × 100%.</p>}</div>}</div>}
+        {draft.platforms.includes(activePlatform) && <div className="platform-insights"><label className="field"><span>{activePlatform} post URL</span><input type="url" placeholder="Attach after publishing" value={draft.platformData[activePlatform].postUrl} onChange={(event) => updateInsight(activePlatform, { postUrl: event.target.value })} />{draft.platformData[activePlatform].postUrl && <a href={safeLink(draft.platformData[activePlatform].postUrl)} target="_blank" rel="noreferrer">View post ↗</a>}</label>{activePlatform === 'Lemon8' ? <div className="lemon8-post-note"><span>Weekly data</span><strong>No individual performance entry needed</strong><p>Reads, combined Likes & Saves, and Follows are entered once per week in Insights → Lemon8. This post link is still used to count how many Lemon8 posts were published.</p></div> : <div className="insights"><div className="insights-head"><div><span>{activePlatform} insights</span><small>Compared with your {activePlatform} content median</small></div><strong>{Math.round(activeViralScore)}/100</strong></div><div className="metrics">{platformMetrics[activePlatform].map((metric) => <label key={metric.key}><span>{metric.label}</span><input min="0" step={metric.step || 1} type="number" value={draft.platformData[activePlatform][metric.key] || ''} placeholder="0" onChange={(event) => updateInsight(activePlatform, { [metric.key]: Math.max(0, Number(event.target.value)) })} /></label>)}</div><div className="formula"><span style={{ width: `${activeViralScore}%` }} /><small>Performance Score · average vs your content median</small></div><p className="er-formula">Score = average of each tracked metric ÷ its {activePlatform} content median, capped at 100. {activePlatform === 'YouTube' ? 'Subscribers means subscribers gained from this content.' : `${insightRate(draft.platformData[activePlatform]).toFixed(1)}% ER = (Likes + Comments + Shares + Saves) ÷ Views × 100%.`}</p>{(activePlatform === 'IG' || activePlatform === 'TikTok' || activePlatform === 'FB') && <p className="er-formula comment-ratio-formula"><b>{commentViewRatio(draft.platformData[activePlatform]).toFixed(2)}% Comment to View Ratio</b> = Comments ÷ Views × 100%.</p>}</div>}</div>}
       </section>}
       {!draft.id && !draft.edited && <div className="progressive-note"><span>✦</span><p><strong>Keep planning simple.</strong> Post URLs and insights appear once editing is complete.</p></div>}
       <div className="editor-actions">{draft.id && <button type="button" className="delete" onClick={() => void removeEntry()}>Delete</button>}<button type="button" className="secondary-button" onClick={() => setShowForm(false)}>Cancel</button><button type="submit" className="primary-button">{draft.id ? 'Save changes' : 'Add to calendar'}</button></div>
